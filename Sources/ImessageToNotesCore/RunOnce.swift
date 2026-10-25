@@ -14,9 +14,6 @@ public struct CreatedMessageNote: Equatable, Sendable {
     public var noteID: String
 }
 
-/// How far back the first run goes. The backfill start is the first-run time minus this, and it never moves.
-let backfillWindow: TimeInterval = 7 * 24 * 60 * 60
-
 /// Does all the work of one run: every Voice Message from a Tracked Contact that is not done
 /// becomes one Message Note, in order of arrival.
 public func runOnce(
@@ -25,6 +22,8 @@ public func runOnce(
     timeZone: TimeZone = .current
 ) async throws -> RunReport {
     var report = RunReport()
+    // The backfill start stays the same from run to run. Only an edit of `backfillDays` moves it.
+    let backfillWindow = TimeInterval(configuration.backfillDays) * 24 * 60 * 60
     let backfillStart = try adapters.state.firstRunAt(recordingIfMissing: adapters.clock.now) - backfillWindow
     let candidates = try adapters.messages.voiceMessages(fromHandles: configuration.handles, since: backfillStart)
     for voiceMessage in candidates {

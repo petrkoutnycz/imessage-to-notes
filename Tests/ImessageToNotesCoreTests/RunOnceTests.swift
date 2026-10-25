@@ -145,6 +145,17 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     ])
 }
 
+@Test func firstRunGoesBackAsManyDaysAsTheConfigurationSays() async throws {
+    var mac = FakeMac()
+    mac.configuration.backfillDays = 3
+    mac.receive("TOO-OLD", sentAt: runAt.addingTimeInterval(-3 * oneDay - 60))
+    mac.receive("IN-WINDOW", sentAt: runAt.addingTimeInterval(-3 * oneDay + 60))
+
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí IN-WINDOW</div>"])
+}
+
 @Test func backfillStartStaysAfterStateStoreReopens() async throws {
     let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: directory) }

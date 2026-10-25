@@ -22,8 +22,8 @@ This ticket completes the Messages Reader and the selection rules in the "run on
 
 2026-10-25: Implemented with tests at the two seams of the spec: the Messages Reader against SQLite fixture files, and "run once" with fake adapters. Decisions, recorded in the spec:
 
-- A Voice Message with no chat link counts as a Direct Chat message. Only a link to a chat with a style other than 45 excludes a Voice Message. The risk is that a group chat Voice Message with no chat link produces a Message Note.
-- The backfill window is fixed at 7 days in the code and is not in the configuration. A configurable window moves the backfill start, and the backfill start must never move.
+- A Voice Message with no chat link counts as a Direct Chat message when its Handle belongs to a Tracked Contact. The user accepted this. Only a link to a chat with a style other than 45 excludes a Voice Message. The risk is that a group chat Voice Message with no chat link produces a Message Note.
+- The backfill window is in the configuration as `backfillDays`, with 7 as the default. The user chose this. The backfill start does not move from run to run. Only an edit of `backfillDays` moves it.
 - For a Handle with `@`, letter case does not matter. For any other Handle, only the digits count.
 - If a message has more than one attachment row, the reader uses the first attachment.
 

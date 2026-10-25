@@ -33,11 +33,29 @@ public struct Configuration: Codable, Equatable, Sendable {
     public var trackedContacts: [TrackedContact]
     public var notesFolder: String
     public var claudeModel: String
+    /// How many days before the first-run time the backfill start is. 7 if the file leaves it out.
+    public var backfillDays: Int
 
-    public init(trackedContacts: [TrackedContact], notesFolder: String, claudeModel: String) {
+    public init(trackedContacts: [TrackedContact], notesFolder: String, claudeModel: String, backfillDays: Int = 7) {
         self.trackedContacts = trackedContacts
         self.notesFolder = notesFolder
         self.claudeModel = claudeModel
+        self.backfillDays = backfillDays
+    }
+
+    public init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        self.init(
+            trackedContacts: try container.decode([TrackedContact].self, forKey: .trackedContacts),
+            notesFolder: try container.decode(String.self, forKey: .notesFolder),
+            claudeModel: try container.decode(String.self, forKey: .claudeModel),
+            backfillDays: try container.decodeIfPresent(Int.self, forKey: .backfillDays) ?? 7
+        )
+        guard backfillDays >= 0 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .backfillDays, in: container, debugDescription: "backfillDays must not be negative"
+            )
+        }
     }
 }
 

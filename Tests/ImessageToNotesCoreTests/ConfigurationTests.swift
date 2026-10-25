@@ -23,3 +23,19 @@ import ImessageToNotesCore
     #expect(configuration.trackedContact(for: "petr@example.com")?.name == "Petr Novák")
     #expect(configuration.trackedContact(for: "+420600000000") == nil)
 }
+
+@Test func configurationFileSetsBackfillWindowInDaysWithSevenAsDefault() throws {
+    let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let withoutWindow = """
+        { "trackedContacts": [], "notesFolder": "Hlasové zprávy", "claudeModel": "claude-sonnet-5-5" }
+        """
+    try Data(withoutWindow.utf8).write(to: url)
+    #expect(try Configuration.load(from: url).backfillDays == 7)
+
+    let withWindow = """
+        { "trackedContacts": [], "notesFolder": "Hlasové zprávy", "claudeModel": "claude-sonnet-5-5", "backfillDays": 3 }
+        """
+    try Data(withWindow.utf8).write(to: url)
+    #expect(try Configuration.load(from: url).backfillDays == 3)
+}
