@@ -8,22 +8,22 @@ Human prerequisites before an agent starts: full Xcode is installed, and an Appl
 
 **Blocked by:** None (can start immediately, after the human prerequisites).
 
-**Status:** ready-for-agent
+**Status:** done
 
-- [ ] The tool is one Swift binary in an app bundle, signed with the Apple Development certificate.
-- [ ] A rebuild keeps Full Disk Access, with no new grant.
-- [ ] The configuration file holds one Tracked Contact (name plus Handles) and the Notes Folder name.
-- [ ] The tool opens the Messages database read-only.
-- [ ] The real database matches the markers that the spec expects (audio flag, from-me flag, chat style, attachment join, Apple epoch dates). Any difference is written into the spec.
-- [ ] The audio file of a real Voice Message decodes, and WhisperKit transcribes it in Czech.
-- [ ] The Summarizer returns a structured response: a Summary of 2 to 4 Czech sentences and a list of Action Items, which can be empty.
-- [ ] The Notes Writer creates the Message Note in the Notes Folder of the iCloud account and returns its note ID.
-- [ ] The Message Note title is `<Tracked Contact name> – <YYYY-MM-DD HH:MM>` in local time.
-- [ ] The body has the Summary and no Transcript. An "Úkoly" list follows the Summary only for a Voice Message with Action Items.
-- [ ] The State Store records the Voice Message as done with its Message Note ID. A second run creates no Message Note.
-- [ ] No Transcript stays on disk after the Message Note exists.
-- [ ] Tests call "run once" with fake adapters and a fake clock. They cover the happy path and the rule that a done Voice Message never gets a second Message Note.
-- [ ] A manual smoke run with one real Voice Message produces the expected Message Note on the Mac and on the iPhone.
+- [x] The tool is one Swift binary in an app bundle, signed with the Apple Development certificate.
+- [x] A rebuild keeps Full Disk Access, with no new grant.
+- [x] The configuration file holds one Tracked Contact (name plus Handles) and the Notes Folder name.
+- [x] The tool opens the Messages database read-only.
+- [x] The real database matches the markers that the spec expects (audio flag, from-me flag, chat style, attachment join, Apple epoch dates). Any difference is written into the spec.
+- [x] The audio file of a real Voice Message decodes, and WhisperKit transcribes it in Czech.
+- [x] The Summarizer returns a structured response: a Summary of 2 to 4 Czech sentences and a list of Action Items, which can be empty.
+- [x] The Notes Writer creates the Message Note in the Notes Folder of the iCloud account and returns its note ID.
+- [x] The Message Note title is `<Tracked Contact name> – <YYYY-MM-DD HH:MM>` in local time.
+- [x] The body has the Summary and no Transcript. An "Úkoly" list follows the Summary only for a Voice Message with Action Items.
+- [x] The State Store records the Voice Message as done with its Message Note ID. A second run creates no Message Note.
+- [x] No Transcript stays on disk after the Message Note exists.
+- [x] Tests call "run once" with fake adapters and a fake clock. They cover the happy path and the rule that a done Voice Message never gets a second Message Note.
+- [x] A manual smoke run with one real Voice Message produces the expected Message Note on the Mac and on the iPhone.
 
 ## Comments
 
@@ -31,4 +31,6 @@ Human prerequisites before an agent starts: full Xcode is installed, and an Appl
 
 2026-10-25: A second `sample` run also called the real Summarizer (`claude-sonnet-5-5`, structured response, API key from the Keychain). It returned a Summary of 3 Czech sentences and 2 Action Items. The Summary calls the speaker "Mluvčí", because only the Transcript goes to Claude and the Transcript has no name.
 
-2026-10-25: Manual smoke run with the signed app, started through `open`. The probe read the Messages database with Full Disk Access, and it read the database again after a rebuild with no new grant. The database markers match the spec, with one difference: many Voice Messages have no chat link. The spec now records this as a question for ticket 02. A run created a Message Note for Voice Message `4DE4BB60-5D62-4051-8BA0-30CA42FD979F` in the Notes Folder in iCloud. The State Store recorded it as done with the note ID, and a second run created no Message Note. The first configured phone Handle was wrong. The user corrected it in `config.json`. Open: check that the Message Note appears on the iPhone.
+2026-10-25: Manual smoke run with the signed app, started through `open`. The probe read the Messages database with Full Disk Access, and it read the database again after a rebuild with no new grant. The database markers match the spec, with one difference: many Voice Messages have no chat link. The spec now records this as a question for ticket 02. A run created a Message Note for Voice Message `4DE4BB60-5D62-4051-8BA0-30CA42FD979F` in the Notes Folder in iCloud. The State Store recorded it as done with the note ID, and a second run created no Message Note. The first configured phone Handle was wrong. The user corrected it in `config.json`.
+
+2026-10-25: The user confirmed that the Message Note appears in the Notes Folder on the iPhone. All checklist items are done.
