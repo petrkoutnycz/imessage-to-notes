@@ -14,7 +14,11 @@ public final class SQLiteStateStore: StateStore {
                 status TEXT NOT NULL,
                 first_seen_at REAL NOT NULL,
                 note_id TEXT
-            )
+            );
+            CREATE TABLE IF NOT EXISTS first_run (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                first_run_at REAL NOT NULL
+            );
             """)
     }
 
@@ -45,5 +49,17 @@ public final class SQLiteStateStore: StateStore {
             """,
             [.text(guid), .text(VoiceMessageStatus.done.rawValue), .real(firstSeenAt.timeIntervalSince1970), .text(noteID)]
         )
+    }
+
+    public func firstRunAt(recordingIfMissing now: Date) throws -> Date {
+        try database.query(
+            "INSERT INTO first_run (id, first_run_at) VALUES (1, ?) ON CONFLICT(id) DO NOTHING",
+            [.real(now.timeIntervalSince1970)]
+        )
+        let rows = try database.query("SELECT first_run_at FROM first_run WHERE id = 1")
+        guard let row = rows.first, let firstRunAt = row[0].real else {
+            throw SQLiteError(description: "The State Store has no first-run time")
+        }
+        return Date(timeIntervalSince1970: firstRunAt)
     }
 }

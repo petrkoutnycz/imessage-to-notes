@@ -8,6 +8,24 @@ public struct TrackedContact: Codable, Equatable, Sendable {
         self.name = name
         self.handles = handles
     }
+
+    /// True when `handle` is one of the Handles of this Tracked Contact, in any format.
+    public func uses(_ handle: String) -> Bool {
+        handles.map(Handle.normalized).contains(Handle.normalized(handle))
+    }
+}
+
+/// How two Handles compare. A phone number counts by its digits only, so spaces and punctuation
+/// do not matter, and both sides use international format with the country code.
+/// An email address counts without regard to letter case.
+public enum Handle {
+    public static func normalized(_ handle: String) -> String {
+        let trimmed = handle.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.contains("@") {
+            return trimmed.lowercased()
+        }
+        return String(trimmed.filter(\.isASCII).filter(\.isNumber))
+    }
 }
 
 /// The JSON configuration file in the tool's Application Support folder.
@@ -30,7 +48,7 @@ extension Configuration {
     }
 
     public func trackedContact(for handle: String) -> TrackedContact? {
-        trackedContacts.first { $0.handles.contains(handle) }
+        trackedContacts.first { $0.uses(handle) }
     }
 
     public static func load(from url: URL) throws -> Configuration {

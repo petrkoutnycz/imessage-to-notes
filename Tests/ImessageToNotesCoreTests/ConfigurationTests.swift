@@ -1,0 +1,25 @@
+import Foundation
+import Testing
+import ImessageToNotesCore
+
+@Test func configurationFileHoldsSeveralTrackedContactsWithSeveralHandles() throws {
+    let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    try Data("""
+        {
+          "trackedContacts": [
+            { "name": "Jana Nováková", "handles": ["+420 777 123 456", "Jana.Novakova@iCloud.com"] },
+            { "name": "Petr Novák", "handles": ["+420602111222", "petr@example.com"] }
+          ],
+          "notesFolder": "Hlasové zprávy",
+          "claudeModel": "claude-sonnet-5-5"
+        }
+        """.utf8).write(to: url)
+
+    let configuration = try Configuration.load(from: url)
+
+    #expect(configuration.trackedContact(for: "jana.novakova@icloud.com")?.name == "Jana Nováková")
+    #expect(configuration.trackedContact(for: "+420777123456")?.name == "Jana Nováková")
+    #expect(configuration.trackedContact(for: "petr@example.com")?.name == "Petr Novák")
+    #expect(configuration.trackedContact(for: "+420600000000") == nil)
+}

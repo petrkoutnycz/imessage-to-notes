@@ -55,7 +55,7 @@ public struct MessagesDatabaseProbe {
         }
 
         // Senders of audio messages, masked, to show how the database writes a Handle.
-        let normalizedHandles = Set(handles.map(Self.normalized))
+        let normalizedHandles = Set(handles.map(Handle.normalized))
         let senders = try database.query("""
             SELECT h.id, COUNT(*) FROM message m JOIN handle h ON h.ROWID = m.handle_id
             WHERE m.is_audio_message = 1 AND m.is_from_me = 0 GROUP BY h.id
@@ -63,7 +63,7 @@ public struct MessagesDatabaseProbe {
         for row in senders {
             let id = row[0].text ?? ""
             let exact = handles.contains(id) ? "exact match" : "no exact match"
-            let normalized = normalizedHandles.contains(Self.normalized(id)) ? "normalized match" : "no normalized match"
+            let normalized = normalizedHandles.contains(Handle.normalized(id)) ? "normalized match" : "no normalized match"
             lines.append("audio sender \(Self.masked(id)): \(row[1].integer ?? 0) messages, \(exact), \(normalized)")
         }
 
@@ -103,11 +103,6 @@ public struct MessagesDatabaseProbe {
             if let path { audioAttachments.append(AudioAttachment(guid: guid, path: path)) }
         }
         return (lines, audioAttachments)
-    }
-
-    /// Lowercase, with only letters, digits, `+`, `@` and `.` kept.
-    private static func normalized(_ handle: String) -> String {
-        String(handle.lowercased().filter { $0.isLetter || $0.isNumber || "+@.".contains($0) })
     }
 
     /// Keeps the format of a Handle visible but hides most of it: digits become 9, letters become x,

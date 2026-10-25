@@ -35,7 +35,7 @@ The probe prints how the real Messages database, the audio file and the Notes ac
 2. If macOS asks if the app can control Notes, click Allow.
 3. Compare the output with the database markers in `.scratch/imessage-to-notes/spec.md`. Write each difference into the spec.
 
-If the probe finds no audio messages from the Handles, the Handles in `config.json` do not match the Messages database. Ticket 02 adds Handle matching that ignores the format.
+The tool compares Handles without regard to the format of phone numbers or the letter case of email addresses. The "newest audio messages" lines of the probe use exact Handles only. If an "audio sender" line says "normalized match", a run finds the Voice Messages of that sender.
 
 ## Sample file
 

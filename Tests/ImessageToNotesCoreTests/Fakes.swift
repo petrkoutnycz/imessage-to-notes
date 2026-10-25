@@ -8,10 +8,11 @@ final class FakeMessagesReader: MessagesReader {
         self.voiceMessages = voiceMessages
     }
 
-    func newestVoiceMessage(fromHandles handles: [String]) throws -> VoiceMessage? {
-        voiceMessages
-            .filter { handles.contains($0.handle) }
-            .max { $0.sentAt < $1.sentAt }
+    func voiceMessages(fromHandles handles: [String], since start: Date) throws -> [VoiceMessage] {
+        let wanted = Set(handles.map(Handle.normalized))
+        return voiceMessages
+            .filter { wanted.contains(Handle.normalized($0.handle)) && $0.sentAt >= start }
+            .sorted { $0.sentAt < $1.sentAt }
     }
 }
 
@@ -64,6 +65,7 @@ final class FakeNotesWriter: NotesWriter {
 
 final class FakeStateStore: StateStore {
     private(set) var records: [String: VoiceMessageRecord] = [:]
+    private var firstRunAt: Date?
 
     func record(for guid: String) throws -> VoiceMessageRecord? {
         records[guid]
@@ -71,6 +73,12 @@ final class FakeStateStore: StateStore {
 
     func markDone(guid: String, noteID: String, firstSeenAt: Date) throws {
         records[guid] = VoiceMessageRecord(guid: guid, status: .done, noteID: noteID, firstSeenAt: firstSeenAt)
+    }
+
+    func firstRunAt(recordingIfMissing now: Date) throws -> Date {
+        let firstRunAt = self.firstRunAt ?? now
+        self.firstRunAt = firstRunAt
+        return firstRunAt
     }
 }
 

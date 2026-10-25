@@ -46,7 +46,8 @@ public struct VoiceMessageRecord: Equatable, Sendable {
 }
 
 public protocol MessagesReader {
-    func newestVoiceMessage(fromHandles handles: [String]) throws -> VoiceMessage?
+    /// Voice Messages from the given Handles, sent on or after `start`, in order of arrival.
+    func voiceMessages(fromHandles handles: [String], since start: Date) throws -> [VoiceMessage]
 }
 
 public protocol Transcriber {
@@ -65,6 +66,8 @@ public protocol NotesWriter {
 public protocol StateStore {
     func record(for guid: String) throws -> VoiceMessageRecord?
     func markDone(guid: String, noteID: String, firstSeenAt: Date) throws
+    /// The time of the first run. The first call records `now` and returns it.
+    func firstRunAt(recordingIfMissing now: Date) throws -> Date
 }
 
 public protocol WallClock {

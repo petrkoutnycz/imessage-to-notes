@@ -33,7 +33,7 @@ struct ImessageToNotes {
         }
     }
 
-    /// Turns the newest Voice Message from a Tracked Contact into a Message Note.
+    /// Turns every Voice Message from a Tracked Contact that is not done into a Message Note.
     @MainActor
     static func run() async throws {
         let configuration = try Configuration.load(from: Paths.configuration)
@@ -45,13 +45,13 @@ struct ImessageToNotes {
             state: try SQLiteStateStore(path: Paths.stateStore.path),
             clock: SystemClock()
         )
-        switch try await runOnce(configuration: configuration, adapters: adapters) {
-        case .noVoiceMessage:
-            print("No Voice Message from a Tracked Contact.")
-        case .alreadyDone(let guid):
-            print("Voice Message \(guid) is already done. No new Message Note.")
-        case .created(let guid, let noteID):
-            print("Voice Message \(guid) became Message Note \(noteID).")
+        let report = try await runOnce(configuration: configuration, adapters: adapters)
+        print("Voice Messages already done: \(report.alreadyDone.count).")
+        for created in report.created {
+            print("Voice Message \(created.guid) became Message Note \(created.noteID).")
+        }
+        if report.created.isEmpty {
+            print("No new Message Note.")
         }
     }
 
