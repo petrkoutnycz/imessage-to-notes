@@ -35,12 +35,21 @@ public struct Configuration: Codable, Equatable, Sendable {
     public var claudeModel: String
     /// How many days before the first-run time the backfill start is. 7 if the file leaves it out.
     public var backfillDays: Int
+    /// True when the normal Message Note body ends with the Transcript. False if the file leaves it out.
+    public var includeTranscript: Bool
 
-    public init(trackedContacts: [TrackedContact], notesFolder: String, claudeModel: String, backfillDays: Int = 7) {
+    public init(
+        trackedContacts: [TrackedContact],
+        notesFolder: String,
+        claudeModel: String,
+        backfillDays: Int = 7,
+        includeTranscript: Bool = false
+    ) {
         self.trackedContacts = trackedContacts
         self.notesFolder = notesFolder
         self.claudeModel = claudeModel
         self.backfillDays = backfillDays
+        self.includeTranscript = includeTranscript
     }
 
     public init(from decoder: any Decoder) throws {
@@ -49,7 +58,8 @@ public struct Configuration: Codable, Equatable, Sendable {
             trackedContacts: try container.decode([TrackedContact].self, forKey: .trackedContacts),
             notesFolder: try container.decode(String.self, forKey: .notesFolder),
             claudeModel: try container.decode(String.self, forKey: .claudeModel),
-            backfillDays: try container.decodeIfPresent(Int.self, forKey: .backfillDays) ?? 7
+            backfillDays: try container.decodeIfPresent(Int.self, forKey: .backfillDays) ?? 7,
+            includeTranscript: try container.decodeIfPresent(Bool.self, forKey: .includeTranscript) ?? false
         )
         guard backfillDays >= 0 else {
             throw DecodingError.dataCorruptedError(

@@ -15,6 +15,7 @@ This ticket uses the `/wizard` skill. See the spec at `.scratch/imessage-to-note
   - Create the Notes Folder in the iCloud account.
   - Write the configuration with the Tracked Contact and the Notes Folder name.
   - Grant Full Disk Access and the Notes Automation permission to the app.
+- [ ] The configuration that the wizard writes holds `"includeTranscript": false`, so I can see the setting and change it later.
 - [ ] The wizard builds the signed app, installs it and loads the launchd agent.
 - [ ] The wizard can run again safely, and it skips steps that are already done.
 - [ ] The README explains install, update and removal, including how to unload the launchd agent.

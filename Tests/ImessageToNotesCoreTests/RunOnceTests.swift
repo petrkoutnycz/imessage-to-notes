@@ -102,6 +102,62 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Jana jen pozdravuje &amp; posílá &lt;3.</div>"])
 }
 
+@Test func messageNoteEndsWithTranscriptWhenTheConfigurationIncludesIt() async throws {
+    let transcriptWithMarkup = "Ahoj, kup mléko & <3 rohlíky."
+    var mac = FakeMac(
+        voiceMessages: [voiceMessage],
+        transcripts: [voiceMessage.audioPath: transcriptWithMarkup],
+        summaries: [transcriptWithMarkup: Summary(text: "Jana prosí o nákup.", actionItems: ["Koupit mléko a rohlíky"])]
+    )
+    mac.configuration.includeTranscript = true
+
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == [
+        "<div>Jana prosí o nákup.</div>"
+            + "<div><br></div><div><b>Úkoly</b></div>"
+            + "<ul><li>Koupit mléko a rohlíky</li></ul>"
+            + "<div><br></div><div><b>Přepis</b></div>"
+            + "<div>Ahoj, kup mléko &amp; &lt;3 rohlíky.</div>",
+    ])
+}
+
+@Test func changedTranscriptSettingAppliesOnlyToNewMessageNotes() async throws {
+    var mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    try await mac.runOnce()
+
+    mac.configuration.includeTranscript = true
+    mac.clock.now = runAt.addingTimeInterval(5 * 60)
+    mac.receive("GUID-2", sentAt: sentAt.addingTimeInterval(60 * 60))
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == [
+        "<div>Shrnutí GUID-1</div>",
+        "<div>Shrnutí GUID-2</div><div><br></div><div><b>Přepis</b></div><div>Přepis GUID-2</div>",
+    ])
+}
+
+@Test func includedTranscriptStaysOutOfNotificationAndLog() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var mac = FakeMac(
+        voiceMessages: [voiceMessage],
+        transcripts: [voiceMessage.audioPath: transcript],
+        summaries: [transcript: Summary(text: "Jana připomíná balík.", actionItems: [])]
+    )
+    mac.configuration.includeTranscript = true
+
+    try await mac.runOnce(log: FileLog(directory: directory, timeZone: prague))
+
+    #expect(mac.notifier.notifications.map(\.body) == ["2026-10-20 08:30"])
+    let texts = mac.notifier.notifications.flatMap { [$0.title, $0.body] }.joined(separator: "\n")
+    #expect(!texts.contains(transcript))
+    let log = try String(contentsOf: directory.appending(path: "2026-10-20.log"), encoding: .utf8)
+    #expect(log.contains("status=done note=x-coredata://note/1"))
+    #expect(!log.contains(transcript))
+}
+
 @Test func doneVoiceMessageNeverGetsSecondMessageNote() async throws {
     var mac = FakeMac(
         voiceMessages: [voiceMessage],

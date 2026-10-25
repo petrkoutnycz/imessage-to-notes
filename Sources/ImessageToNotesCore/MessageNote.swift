@@ -26,12 +26,17 @@ enum MessageNote {
         return formatter.string(from: date)
     }
 
-    /// The Summary, then an "Úkoly" list for Action Items. Never the Transcript.
-    static func body(summary: Summary) -> String {
+    /// The Summary, then an "Úkoly" list for Action Items. A "Přepis" section with `transcript` comes last,
+    /// if `transcript` is not nil.
+    static func body(summary: Summary, transcript: String?) -> String {
         var html = "<div>\(HTML.escape(summary.text))</div>"
         if !summary.actionItems.isEmpty {
             html += "<div><br></div><div><b>Úkoly</b></div>"
             html += "<ul>" + summary.actionItems.map { "<li>\(HTML.escape($0))</li>" }.joined() + "</ul>"
+        }
+        if let transcript {
+            html += "<div><br></div><div><b>Přepis</b></div>"
+            html += "<div>\(HTML.escape(transcript))</div>"
         }
         return html
     }

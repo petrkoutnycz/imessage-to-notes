@@ -54,6 +54,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 40. As the user, I want Full Disk Access only for this tool, so that other programs cannot read my messages.
 41. As the user, I want the tool to start automatically at login, so that I do not have to remember to start it.
 42. As the user, I want only one run at a time, so that overlapping runs do not create duplicates.
+43. As the user, I want a setting to include the Transcript in the Message Note, so that I can read the full text when I want it.
 
 ## Implementation Decisions
 
@@ -63,7 +64,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 - The run once operation takes a file lock first. If another run holds the lock, the new run exits at once.
 - Run order: load the configuration, make sure that the Notes Folder exists, and read candidate Voice Messages. Then skip the ones that are done, and process the rest in order of arrival.
 - If the Notes Folder does not exist, the run stops before it processes any Voice Message. It logs the error and sends a notification at most once every 24 hours.
-- The configuration is a JSON file in the tool's Application Support folder. It holds the Tracked Contacts (name plus Handles) and the Notes Folder name. It also holds the backfill window in days (`backfillDays`, 7 if left out), the retry window (12 hours) and the Claude model ID. The backfill start does not move from run to run. Only an edit of `backfillDays` moves it.
+- The configuration is a JSON file in the tool's Application Support folder. It holds the Tracked Contacts (name plus Handles) and the Notes Folder name. It also holds the backfill window in days (`backfillDays`, 7 if left out), the retry window (12 hours) and the Claude model ID. It also holds `includeTranscript`, which is false if left out. This setting decides if the normal Message Note holds the Transcript. The backfill start does not move from run to run. Only an edit of `backfillDays` moves it.
 - Handle matching: the code compares phone numbers after it removes spaces and punctuation, in international format with the country code. It compares email addresses without regard to letter case. A Handle with `@` is an email address. For any other Handle, only the digits count.
 - Messages Reader: it opens the Messages database read-only and returns candidate Voice Messages. A candidate is an audio message from a Handle of a Tracked Contact, in a one-to-one chat or with no chat link. It is not from me, and its date is on or after the backfill start. The reader returns candidates in order of arrival. It returns the message GUID, the Handle, the sent date and the path of the audio file.
 - The expected database markers are a flag for audio messages and a flag for messages from me. A chat style separates one-to-one chats from group chats, and a join table links attachments. Dates use Apple's epoch (2001-01-01) in nanoseconds. The first ticket must make sure that these markers match the real database on this Mac.
@@ -74,7 +75,8 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 - Summarizer: the Claude Messages API with model `claude-sonnet-5-5` (see ADR 0001). The API key comes from the macOS Keychain. Input is the Transcript. Output is a Summary of 2 to 4 sentences of Czech prose plus a list of Action Items, which can be empty. The request asks for a structured response, so the code never parses free text.
 - Notes Writer: it creates a note through AppleScript in the Notes Folder of the iCloud account, with an HTML body, and returns the note ID. It also opens a note by ID, for the notification click. It needs the macOS Automation permission for Notes.
 - Message Note title: `<Tracked Contact name> – <YYYY-MM-DD HH:MM>`, in local time, from the sent date of the Voice Message.
-- Message Note body in the normal case: the Summary. If Action Items exist, an "Úkoly" (Action Items) list follows. There is no Transcript.
+- Message Note body in the normal case: the Summary. If Action Items exist, an "Úkoly" (Action Items) list follows. If `includeTranscript` is true, a bold "Přepis" (Transcript) heading and the Transcript come last, as one paragraph. If it is false, there is no Transcript.
+- At the creation of each Message Note, the tool reads the current `includeTranscript` value. It never changes an existing Message Note after a change of the setting. The setting does not change the fallback bodies.
 - Fallback body after a failed Summary: the line "Shrnutí se nepodařilo vytvořit", then the Transcript.
 - Fallback body after failed transcription or a missing audio file: a Czech error notice that names the failed step. There is no Transcript.
 - State Store: a small SQLite database in the tool's Application Support folder. For each Voice Message, it records the GUID, the first-seen time and the status (pending, done or fallback). It also records the attempt count, the last error and the Message Note ID. It also records the first-run time.
@@ -87,7 +89,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 ## Testing Decisions
 
 - A good test drives the tool from the outside and asserts on what the user sees: which Message Notes exist, with what title and body, what the State Store records, what the log says and which notifications fire. It never asserts on internal calls or private types.
-- Main seam: the run once operation, called with fake adapters and a fake clock. These tests cover Tracked Contacts only, Direct Chats only, the backfill window and at most one Message Note per Voice Message. They also cover the 12-hour retry, both fallback bodies, the missing audio file and the missing Notes Folder. Last, they cover the notification limits, the run lock and the rule that the log holds no Transcript or Summary text.
+- Main seam: the run once operation, called with fake adapters and a fake clock. These tests cover Tracked Contacts only, Direct Chats only, the backfill window and at most one Message Note per Voice Message. They also cover the 12-hour retry, both fallback bodies, the missing audio file and the missing Notes Folder. They also cover the normal body with `includeTranscript` off and on. Last, they cover the notification limits, the run lock and the rule that the log holds no Transcript or Summary text.
 - Second seam: the Messages Reader, tested against small SQLite fixture files that copy the parts of the Messages database schema that the reader uses. These tests cover audio versus other messages, from-me messages, one-to-one versus group chats, Handle matching across phone numbers and emails, and Apple epoch date filtering.
 - The real WhisperKit, Claude API, Notes, notification and Keychain adapters get no automated tests. A manual smoke run on the Mac, with one real Voice Message, makes sure that they work.
 - The repo has no prior art. Tests use the Swift testing framework that comes with Xcode.
@@ -98,7 +100,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 - Voice Messages that I send.
 - Languages other than Czech.
 - Voice Messages older than the 7-day backfill window, and any later backfill command.
-- A Transcript in the normal Message Note, and any long-term Transcript storage.
+- Long-term Transcript storage outside the Message Note.
 - Recreating or updating a Message Note after creation.
 - A user interface beyond notifications.
 - iPhone or iPad. The tool runs on this one Mac only.

@@ -116,7 +116,10 @@ private func processVoiceMessages(
             try await adapters.summarizer.summarize(transcribed.transcript)
         }
         try logStep(.summarized)
-        let htmlBody = MessageNote.body(summary: summary)
+        let htmlBody = MessageNote.body(
+            summary: summary,
+            transcript: configuration.includeTranscript ? transcribed.transcript : nil
+        )
         let privateTexts = [transcribed.transcript, summary.text, htmlBody] + summary.actionItems
         let noteID = try await perform(.createMessageNote, privateTexts: privateTexts) {
             try await adapters.notes.createMessageNote(

@@ -39,3 +39,19 @@ import ImessageToNotesCore
     try Data(withWindow.utf8).write(to: url)
     #expect(try Configuration.load(from: url).backfillDays == 3)
 }
+
+@Test func configurationFileSetsIncludeTranscriptWithFalseAsDefault() throws {
+    let url = FileManager.default.temporaryDirectory.appending(path: "\(UUID().uuidString).json")
+    defer { try? FileManager.default.removeItem(at: url) }
+    let withoutSetting = """
+        { "trackedContacts": [], "notesFolder": "Hlasové zprávy", "claudeModel": "claude-sonnet-5-5" }
+        """
+    try Data(withoutSetting.utf8).write(to: url)
+    #expect(try Configuration.load(from: url).includeTranscript == false)
+
+    let withSetting = """
+        { "trackedContacts": [], "notesFolder": "Hlasové zprávy", "claudeModel": "claude-sonnet-5-5", "includeTranscript": true }
+        """
+    try Data(withSetting.utf8).write(to: url)
+    #expect(try Configuration.load(from: url).includeTranscript == true)
+}

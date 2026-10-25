@@ -37,7 +37,7 @@ A task, date or request that the speaker mentions in a Voice Message.
 _Avoid_: To-do, task, follow-up
 
 **Message Note**:
-The one note in the Notes Folder for one Voice Message. It holds the Summary and any Action Items. If no Summary exists, it holds the Transcript.
+The one note in the Notes Folder for one Voice Message. It holds the Summary and any Action Items. If you choose, it also holds the Transcript. If no Summary exists, it holds the Transcript.
 _Avoid_: Note (alone), transcript note, entry
 
 **Notes Folder**:
