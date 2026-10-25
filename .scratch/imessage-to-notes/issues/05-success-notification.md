@@ -6,14 +6,14 @@ This ticket adds the Notifier adapter and the "open note by ID" action of the No
 
 **Blocked by:** 01 (Tracer bullet: one real Voice Message becomes one Message Note).
 
-**Status:** ready-for-human
+**Status:** done
 
 - [x] Each new Message Note produces one notification with the Tracked Contact name and the time.
 - [x] The notification contains no Summary or Transcript text.
 - [x] The notification carries the Message Note ID.
 - [x] A click on the notification starts the app, and the app opens that Message Note in Notes.
 - [x] A "run once" test with fake adapters makes sure that one Message Note produces one notification with the right text.
-- [ ] A manual run makes sure that the real notification appears and that the click opens the right Message Note.
+- [x] A manual run makes sure that the real notification appears and that the click opens the right Message Note.
 
 ## Comments
 
@@ -24,3 +24,5 @@ The real Notifier is `UserNotificationNotifier`. If the permission is not determ
 A click goes to `NotificationClickHandler`. If the app does not run, macOS starts it with no arguments. The app then waits up to 30 seconds for the click and quits. A start with no arguments no longer does a run. The launchd agent passes `run`, so background runs do not change. A failed open gets a `message note open failed` log entry.
 
 The last item needs a human, because it needs a real Voice Message and a click. See "Notifications" in `docs/smoke-run.md`. If the click does not reach the app, the cause can be that macOS delivers the click before the delegate is set. In that case, look at the log and at the Console app for `usernoted` messages.
+
+The manual run on 2026-10-25 made sure that the notification works. The first run asked for the permission, and nobody answered within 60 seconds, so the log shows `status=failed step=notify` for that Message Note. After the user allowed notifications, two new Voice Messages each produced a notification and a `status=notified` entry. A click on a notification opened the right Message Note in Notes.
