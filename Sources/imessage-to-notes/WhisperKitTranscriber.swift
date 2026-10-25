@@ -6,20 +6,21 @@ import WhisperKit
 final class WhisperKitTranscriber: Transcriber {
     static let model = "openai_whisper-large-v3"
 
-    private let modelsDirectory: URL
+    private let downloadBase: URL
 
-    init(modelsDirectory: URL) {
-        self.modelsDirectory = modelsDirectory
+    /// The Hugging Face Hub library adds `models/<owner>/<repository>` under `downloadBase`.
+    init(downloadBase: URL) {
+        self.downloadBase = downloadBase
     }
 
     func transcribe(audioAt path: String) async throws -> String {
         guard FileManager.default.fileExists(atPath: path) else {
             throw AdapterError("The audio file is missing: \(path)")
         }
-        try FileManager.default.createDirectory(at: modelsDirectory, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: downloadBase, withIntermediateDirectories: true)
         let whisper = try await WhisperKit(WhisperKitConfig(
             model: Self.model,
-            downloadBase: modelsDirectory,
+            downloadBase: downloadBase,
             verbose: false
         ))
         let options = DecodingOptions(

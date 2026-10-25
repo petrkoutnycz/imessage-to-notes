@@ -7,7 +7,6 @@ enum Paths {
     static let support = URL.applicationSupportDirectory.appending(path: "imessage-to-notes")
     static let configuration = support.appending(path: "config.json")
     static let stateStore = support.appending(path: "state.sqlite")
-    static let models = support.appending(path: "models")
     static let messagesDatabase = URL.homeDirectory.appending(path: "Library/Messages/chat.db")
 }
 
@@ -39,7 +38,7 @@ struct ImessageToNotes {
         let configuration = try Configuration.load(from: Paths.configuration)
         let adapters = Adapters(
             messages: try MessagesDatabaseReader(path: Paths.messagesDatabase.path),
-            transcriber: WhisperKitTranscriber(modelsDirectory: Paths.models),
+            transcriber: WhisperKitTranscriber(downloadBase: Paths.support),
             summarizer: ClaudeSummarizer(model: configuration.claudeModel, apiKey: try Keychain.anthropicAPIKey()),
             notes: AppleScriptNotesWriter(),
             state: try SQLiteStateStore(path: Paths.stateStore.path),
@@ -59,7 +58,7 @@ struct ImessageToNotes {
     /// It writes nothing to disk except the Whisper model.
     @MainActor
     static func sample(audioPath: String) async throws {
-        let transcript = try await WhisperKitTranscriber(modelsDirectory: Paths.models).transcribe(audioAt: audioPath)
+        let transcript = try await WhisperKitTranscriber(downloadBase: Paths.support).transcribe(audioAt: audioPath)
         print("Transcript:\n\(transcript)\n")
         let configuration = try Configuration.load(from: Paths.configuration)
         let summarizer = ClaudeSummarizer(model: configuration.claudeModel, apiKey: try Keychain.anthropicAPIKey())
