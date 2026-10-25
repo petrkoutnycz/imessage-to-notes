@@ -1,0 +1,49 @@
+import Foundation
+
+/// The State Store: a small SQLite database in the tool's Application Support folder.
+public final class SQLiteStateStore: StateStore {
+    private let database: SQLiteDatabase
+
+    public init(path: String) throws {
+        let directory = URL(filePath: path).deletingLastPathComponent()
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        database = try SQLiteDatabase(path: path, mode: .readWriteCreate)
+        try database.execute("""
+            CREATE TABLE IF NOT EXISTS voice_messages (
+                guid TEXT PRIMARY KEY,
+                status TEXT NOT NULL,
+                first_seen_at REAL NOT NULL,
+                note_id TEXT
+            )
+            """)
+    }
+
+    public func record(for guid: String) throws -> VoiceMessageRecord? {
+        let rows = try database.query(
+            "SELECT status, first_seen_at, note_id FROM voice_messages WHERE guid = ?",
+            [.text(guid)]
+        )
+        guard let row = rows.first else { return nil }
+        guard let statusText = row[0].text, let status = VoiceMessageStatus(rawValue: statusText),
+              let firstSeenAt = row[1].real
+        else {
+            throw SQLiteError(description: "Bad State Store row for \(guid)")
+        }
+        return VoiceMessageRecord(
+            guid: guid,
+            status: status,
+            noteID: row[2].text,
+            firstSeenAt: Date(timeIntervalSince1970: firstSeenAt)
+        )
+    }
+
+    public func markDone(guid: String, noteID: String, firstSeenAt: Date) throws {
+        try database.query(
+            """
+            INSERT INTO voice_messages (guid, status, first_seen_at, note_id) VALUES (?, ?, ?, ?)
+            ON CONFLICT(guid) DO UPDATE SET status = excluded.status, note_id = excluded.note_id
+            """,
+            [.text(guid), .text(VoiceMessageStatus.done.rawValue), .real(firstSeenAt.timeIntervalSince1970), .text(noteID)]
+        )
+    }
+}

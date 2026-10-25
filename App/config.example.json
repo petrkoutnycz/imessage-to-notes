@@ -1,0 +1,10 @@
+{
+  "trackedContacts": [
+    {
+      "name": "Jana Nováková",
+      "handles": ["+420777123456", "jana.novakova@icloud.com"]
+    }
+  ],
+  "notesFolder": "Hlasové zprávy",
+  "claudeModel": "claude-sonnet-5-5"
+}
