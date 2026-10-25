@@ -15,6 +15,18 @@ public struct VoiceMessage: Equatable, Sendable {
     }
 }
 
+/// The Transcriber result for one Voice Message.
+public struct TranscribedAudio: Equatable, Sendable {
+    public var transcript: String
+    /// The length of the audio in seconds.
+    public var audioDuration: TimeInterval
+
+    public init(transcript: String, audioDuration: TimeInterval) {
+        self.transcript = transcript
+        self.audioDuration = audioDuration
+    }
+}
+
 /// The Summarizer result for one Transcript.
 public struct Summary: Equatable, Sendable {
     public var text: String
@@ -51,7 +63,7 @@ public protocol MessagesReader {
 }
 
 public protocol Transcriber {
-    func transcribe(audioAt path: String) async throws -> String
+    func transcribe(audioAt path: String) async throws -> TranscribedAudio
 }
 
 public protocol Summarizer {
@@ -77,6 +89,14 @@ public protocol RunLock {
     func unlock()
 }
 
+/// The run log. An entry has no field for Transcript or Summary text.
+public protocol Log {
+    /// Appends `entry` to the log file of the day of its time.
+    func write(_ entry: LogEntry) throws
+    /// Deletes the log files of the days before the day of `cutoff`.
+    func deleteFiles(before cutoff: Date) throws
+}
+
 public protocol WallClock {
     var now: Date { get }
 }
@@ -95,6 +115,7 @@ public struct Adapters {
     public var state: any StateStore
     public var clock: any WallClock
     public var lock: any RunLock
+    public var log: any Log
 
     public init(
         messages: any MessagesReader,
@@ -103,7 +124,8 @@ public struct Adapters {
         notes: any NotesWriter,
         state: any StateStore,
         clock: any WallClock,
-        lock: any RunLock
+        lock: any RunLock,
+        log: any Log
     ) {
         self.messages = messages
         self.transcriber = transcriber
@@ -112,5 +134,6 @@ public struct Adapters {
         self.state = state
         self.clock = clock
         self.lock = lock
+        self.log = log
     }
 }

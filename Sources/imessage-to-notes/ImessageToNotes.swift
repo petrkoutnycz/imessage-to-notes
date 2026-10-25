@@ -8,6 +8,7 @@ enum Paths {
     static let configuration = support.appending(path: "config.json")
     static let stateStore = support.appending(path: "state.sqlite")
     static let runLock = support.appending(path: "run.lock")
+    static let logs = URL.libraryDirectory.appending(path: "Logs/imessage-to-notes")
     static let messagesDatabase = URL.homeDirectory.appending(path: "Library/Messages/chat.db")
 }
 
@@ -36,16 +37,26 @@ struct ImessageToNotes {
     /// Turns every Voice Message from a Tracked Contact that is not done into a Message Note.
     @MainActor
     static func run() async throws {
-        let configuration = try Configuration.load(from: Paths.configuration)
-        let adapters = Adapters(
-            messages: try MessagesDatabaseReader(path: Paths.messagesDatabase.path),
-            transcriber: WhisperKitTranscriber(downloadBase: Paths.support),
-            summarizer: ClaudeSummarizer(model: configuration.claudeModel, apiKey: try Keychain.anthropicAPIKey()),
-            notes: AppleScriptNotesWriter(),
-            state: try SQLiteStateStore(path: Paths.stateStore.path),
-            clock: SystemClock(),
-            lock: FileRunLock(path: Paths.runLock.path)
-        )
+        let log = FileLog(directory: Paths.logs)
+        let configuration: Configuration
+        let adapters: Adapters
+        do {
+            configuration = try Configuration.load(from: Paths.configuration)
+            adapters = Adapters(
+                messages: try MessagesDatabaseReader(path: Paths.messagesDatabase.path),
+                transcriber: WhisperKitTranscriber(downloadBase: Paths.support),
+                summarizer: ClaudeSummarizer(model: configuration.claudeModel, apiKey: try Keychain.anthropicAPIKey()),
+                notes: AppleScriptNotesWriter(),
+                state: try SQLiteStateStore(path: Paths.stateStore.path),
+                clock: SystemClock(),
+                lock: FileRunLock(path: Paths.runLock.path),
+                log: log
+            )
+        } catch {
+            // launchd keeps no output of a background run, so the log is the only record of this failure.
+            try? log.write(LogEntry(time: Date(), event: .runFailed(error: String(describing: error))))
+            throw error
+        }
         let report = try await runOnce(configuration: configuration, adapters: adapters)
         if report.lockHeldByAnotherRun {
             print("Another run is active. This run does nothing.")
@@ -64,7 +75,7 @@ struct ImessageToNotes {
     /// It writes nothing to disk except the Whisper model.
     @MainActor
     static func sample(audioPath: String) async throws {
-        let transcript = try await WhisperKitTranscriber(downloadBase: Paths.support).transcribe(audioAt: audioPath)
+        let transcript = try await WhisperKitTranscriber(downloadBase: Paths.support).transcribe(audioAt: audioPath).transcript
         print("Transcript:\n\(transcript)\n")
         let configuration = try Configuration.load(from: Paths.configuration)
         let summarizer = ClaudeSummarizer(model: configuration.claudeModel, apiKey: try Keychain.anthropicAPIKey())

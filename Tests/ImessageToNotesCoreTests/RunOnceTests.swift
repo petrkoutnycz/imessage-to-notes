@@ -183,6 +183,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
 
     #expect(mac.notesWriter.messageNotes.isEmpty)
     #expect(try mac.state.record(for: "GUID-1") == nil)
+    #expect(mac.log.entries == [LogEntry(time: runAt, event: .runSkipped)])
 }
 
 @Test func runAfterEarlierRunEndsCreatesMessageNote() async throws {
@@ -200,6 +201,117 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-1</div>", "<div>Shrnutí GUID-2</div>"])
 }
 
+@Test func logRecordsEachStepOfVoiceMessageButNoTranscriptOrSummary() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let summary = Summary(
+        text: "Jana připomíná vyzvednutí balíku. Také prosí o telefonát mamince.",
+        actionItems: ["Vyzvednout balík na poště zítra v 10:00", "Zavolat mamince"]
+    )
+    let mac = FakeMac(
+        voiceMessages: [voiceMessage],
+        transcripts: [voiceMessage.audioPath: transcript],
+        summaries: [transcript: summary]
+    )
+
+    try await mac.runOnce(log: FileLog(directory: directory, timeZone: prague))
+    try await mac.runOnce(log: FileLog(directory: directory, timeZone: prague))
+
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["2026-10-20.log"])
+    let log = try String(contentsOf: directory.appending(path: "2026-10-20.log"), encoding: .utf8)
+    let voiceMessageFields = "voice-message guid=GUID-1 tracked-contact=\"Jana Nováková\" sent=2026-10-20T08:30:00+02:00"
+    #expect(log == """
+        2026-10-20T14:40:00+02:00 run started
+        2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=transcribed
+        2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=summarized
+        2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=done note=x-coredata://note/1
+        2026-10-20T14:40:00+02:00 run finished created=1 already-done=0
+        2026-10-20T14:40:00+02:00 run started
+        2026-10-20T14:40:00+02:00 \(voiceMessageFields) status=already-done
+        2026-10-20T14:40:00+02:00 run finished created=0 already-done=1
+
+        """)
+    for privateText in [transcript, summary.text] + summary.actionItems {
+        #expect(!log.contains(privateText))
+    }
+}
+
+@Test func logRecordsFailedStepButNoTranscriptOrSummaryThatTheErrorQuotes() async throws {
+    let summary = Summary(
+        text: "Jana připomíná vyzvednutí balíku. Také prosí o telefonát mamince.",
+        actionItems: ["Zavolat mamince"]
+    )
+    let mac = FakeMac(
+        voiceMessages: [voiceMessage],
+        transcripts: [voiceMessage.audioPath: transcript],
+        summaries: [transcript: summary]
+    )
+    // Like AppleScript, the error quotes the start of the value that it cannot use.
+    mac.notesWriter.failure = { htmlBody in
+        FakeError("AppleScript error -2700: Can't make \"\(htmlBody.prefix(60))…\" into type text.\nTranscript: \(transcript)")
+    }
+
+    await #expect(throws: FakeError.self) { try await mac.runOnce() }
+
+    let failed = try #require(mac.log.entries.last)
+    #expect(failed == LogEntry(time: runAt, event: .voiceMessage(VoiceMessageLogEntry(
+        guid: "GUID-1",
+        trackedContactName: "Jana Nováková",
+        sentAt: sentAt,
+        audioDuration: 42.5,
+        status: .failed(
+            step: .createMessageNote,
+            error: "AppleScript error -2700: Can't make \"[redacted]…\" into type text.\nTranscript: [redacted]"
+        )
+    ))))
+    let lines = mac.log.entries.map { $0.line(timeZone: prague) }.joined(separator: "\n")
+    for privateText in [transcript, summary.text] + summary.actionItems {
+        #expect(!lines.contains(privateText))
+    }
+}
+
+@Test func runDeletesLogFilesOlderThanThirtyDaysAndKeepsNewerOnes() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    for name in ["2026-09-01.log", "2026-09-19.log", "2026-09-20.log", "2026-09-21.log", "notes.txt"] {
+        try Data("2026-09-01T10:00:00+02:00 run started\n".utf8).write(to: directory.appending(path: name))
+    }
+    var mac = FakeMac()
+
+    // 2026-10-20 14:40 in Prague: 30 days earlier is 2026-09-20 14:40, so the files up to 2026-09-19 are older.
+    try await mac.runOnce(log: FileLog(directory: directory, timeZone: prague))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted() == [
+        "2026-09-20.log", "2026-09-21.log", "2026-10-20.log", "notes.txt",
+    ])
+
+    mac.clock.now = runAt.addingTimeInterval(oneDay)
+    try await mac.runOnce(log: FileLog(directory: directory, timeZone: prague))
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted() == [
+        "2026-09-21.log", "2026-10-20.log", "2026-10-21.log", "notes.txt",
+    ])
+}
+
+@Test func runThatCannotDeleteOldLogFilesStillCreatesMessageNote() async throws {
+    let mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.log.deleteFailure = FakeError("Permission denied")
+
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-1</div>"])
+    #expect(mac.log.entries.contains(LogEntry(time: runAt, event: .logCleanupFailed(error: "Permission denied"))))
+}
+
+@Test func runThatCannotTakeTheLockLogsTheError() async throws {
+    let mac = FakeMac()
+    mac.lock.failure = FakeError("Cannot open the lock file")
+
+    await #expect(throws: FakeError.self) { try await mac.runOnce() }
+
+    #expect(mac.log.entries == [LogEntry(time: runAt, event: .runFailed(error: "Cannot open the lock file"))])
+}
+
 /// One set of fake adapters that several runs share, like the Mac between two runs.
 private struct FakeMac {
     let messages: FakeMessagesReader
@@ -208,6 +320,7 @@ private struct FakeMac {
     let notesWriter = FakeNotesWriter()
     let state = FakeStateStore()
     let lock = FakeRunLock()
+    let log = FakeLog()
     var clock = FakeClock(now: runAt)
     var configuration = janaOnly
 
@@ -225,7 +338,7 @@ private struct FakeMac {
         summarizer.summaries["Přepis \(guid)"] = Summary(text: "Shrnutí \(guid)", actionItems: [])
     }
 
-    func runOnce(state: (any StateStore)? = nil, lock: (any RunLock)? = nil) async throws {
+    func runOnce(state: (any StateStore)? = nil, lock: (any RunLock)? = nil, log: (any Log)? = nil) async throws {
         _ = try await ImessageToNotesCore.runOnce(
             configuration: configuration,
             adapters: Adapters(
@@ -235,7 +348,8 @@ private struct FakeMac {
                 notes: notesWriter,
                 state: state ?? self.state,
                 clock: clock,
-                lock: lock ?? self.lock
+                lock: lock ?? self.lock,
+                log: log ?? self.log
             ),
             timeZone: prague
         )

@@ -70,11 +70,22 @@ A per-user launchd agent starts the app at login and every 5 minutes. Each start
 1. Run `scripts/build-app.sh` in the repository folder.
 2. Run `scripts/load-agent.sh`. The script copies the app to `~/Applications/ImessageToNotes.app`. It writes the agent definition, a property list file, to `~/Library/LaunchAgents/cz.petrkoutny.imessage-to-notes.plist`, and loads the agent. The agent starts the first run at once.
 3. If macOS asks if the app can control Notes or use the keychain item, click Allow or Always Allow. launchd starts the binary directly and not through `open`, so macOS can ask again.
-4. Make sure that `~/Library/Logs/imessage-to-notes/agent.log` shows the output of the first run.
+4. Make sure that the log file of today in `~/Library/Logs/imessage-to-notes` shows the entries of the first run. See "Run log".
 5. Ask the Tracked Contact to send a Voice Message. Make sure that the Message Note appears in the Notes Folder within about 5 minutes, with no manual start.
 
 The app in `~/Applications` has the same signature as the app in `build/`, so it keeps Full Disk Access. If a new build is ready, run `scripts/load-agent.sh` again. To stop background runs, run `scripts/unload-agent.sh`. This script unloads the agent and removes its property list file. The app, the configuration and the State Store stay.
 
 If you run `scripts/load-agent.sh` or `scripts/unload-agent.sh` during a run, launchd stops that run. A run that stops after the Notes Writer creates the Message Note, but before the State Store records it, causes a duplicate Message Note in the next run.
 
-launchd starts no new run while a run is active. If a run waits for a permission dialog that nobody answers, no further runs occur. If `agent.log` shows no new output for more than 5 minutes, look for an open dialog.
+launchd starts no new run while a run is active. If a run waits for a permission dialog that nobody answers, no further runs occur. If the log shows no new `run started` entry for more than 5 minutes, look for an open dialog.
+
+## Run log
+
+Each run writes entries to a daily text file in `~/Library/Logs/imessage-to-notes`, for example `2026-10-25.log`. Each run that gets the lock deletes the log files that are older than 30 days. If the deletion fails, the log shows `log cleanup failed` and the run continues. If the tool cannot write the log, the run stops. The agent keeps no other output, so a background run prints nothing to a file.
+
+An entry about a Voice Message holds its GUID, the time of the entry, the sent time and the Tracked Contact name (`tracked-contact`). It also holds the step status and the error details of a failed step. The entries after the transcription also hold the audio duration. An entry never holds Transcript or Summary text. If an error quotes 10 or more characters of a Transcript or a Summary, the log shows `[redacted]` in place of that text.
+
+1. After a run, open the log file of today.
+2. Make sure that the entries of the run start with `run started`.
+3. Make sure that each new Voice Message has a `status=done` entry with the note ID.
+4. Make sure that the file contains no Transcript or Summary text.

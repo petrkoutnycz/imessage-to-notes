@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import ImessageToNotesCore
 import WhisperKit
@@ -13,10 +14,12 @@ final class WhisperKitTranscriber: Transcriber {
         self.downloadBase = downloadBase
     }
 
-    func transcribe(audioAt path: String) async throws -> String {
+    func transcribe(audioAt path: String) async throws -> TranscribedAudio {
         guard FileManager.default.fileExists(atPath: path) else {
             throw AdapterError("The audio file is missing: \(path)")
         }
+        let audioFile = try AVAudioFile(forReading: URL(filePath: path))
+        let audioDuration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
         try FileManager.default.createDirectory(at: downloadBase, withIntermediateDirectories: true)
         let whisper = try await WhisperKit(WhisperKitConfig(
             model: Self.model,
@@ -37,6 +40,6 @@ final class WhisperKitTranscriber: Transcriber {
         guard !transcript.isEmpty else {
             throw AdapterError("Whisper returned an empty Transcript")
         }
-        return transcript
+        return TranscribedAudio(transcript: transcript, audioDuration: audioDuration)
     }
 }
