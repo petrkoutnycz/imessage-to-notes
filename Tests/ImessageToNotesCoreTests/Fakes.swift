@@ -111,6 +111,20 @@ final class FakeRunLock: RunLock {
     func unlock() {}
 }
 
+/// A Notifier that keeps every notification in memory.
+final class FakeNotifier: Notifier {
+    private(set) var notifications: [UserNotification] = []
+    /// When set, every notification fails with this error.
+    var failure: (any Error)?
+
+    func send(_ notification: UserNotification) async throws {
+        if let failure {
+            throw failure
+        }
+        notifications.append(notification)
+    }
+}
+
 /// A log that keeps every entry in memory.
 final class FakeLog: Log {
     private(set) var entries: [LogEntry] = []

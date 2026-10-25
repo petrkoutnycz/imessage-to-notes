@@ -89,3 +89,16 @@ An entry about a Voice Message holds its GUID, the time of the entry, the sent t
 2. Make sure that the entries of the run start with `run started`.
 3. Make sure that each new Voice Message has a `status=done` entry with the note ID.
 4. Make sure that the file contains no Transcript or Summary text.
+
+## Notifications
+
+Each new Message Note produces one notification. The title is `Nová hlasová zpráva od <name> zpracována`, and the text is the sent time of the Voice Message. A notification never holds Summary or Transcript text. The first notification asks for the notification permission. If nobody answers within 60 seconds, that run sends no notifications, and the log shows `status=failed step=notify` for each new Message Note of the run. A failed notification does not stop the run.
+
+1. Run `scripts/build-app.sh`, then run `scripts/load-agent.sh`.
+2. Ask the Tracked Contact to send a Voice Message.
+3. If macOS asks if iMessage to Notes can send notifications, allow it.
+4. Make sure that the notification shows the Tracked Contact name and the time, and no Summary text.
+5. Make sure that the log file of today has a `status=notified` entry with the note ID.
+6. Click the notification. Make sure that Notes opens that Message Note.
+
+If you click a notification after the run ends, macOS starts the app with no arguments. The app then waits up to 30 seconds for the click, opens the Message Note and quits. If Notes does not open the Message Note, look for a `message note open failed` entry in the log.

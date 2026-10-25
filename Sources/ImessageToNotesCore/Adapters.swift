@@ -97,6 +97,24 @@ public protocol Log {
     func deleteFiles(before cutoff: Date) throws
 }
 
+/// A macOS notification. It holds no Transcript or Summary text, because it can show on the lock screen.
+public struct UserNotification: Equatable, Sendable {
+    public var title: String
+    public var body: String
+    /// The Message Note that a click on the notification opens.
+    public var noteID: String
+
+    public init(title: String, body: String, noteID: String) {
+        self.title = title
+        self.body = body
+        self.noteID = noteID
+    }
+}
+
+public protocol Notifier {
+    func send(_ notification: UserNotification) async throws
+}
+
 public protocol WallClock {
     var now: Date { get }
 }
@@ -116,6 +134,7 @@ public struct Adapters {
     public var clock: any WallClock
     public var lock: any RunLock
     public var log: any Log
+    public var notifier: any Notifier
 
     public init(
         messages: any MessagesReader,
@@ -125,7 +144,8 @@ public struct Adapters {
         state: any StateStore,
         clock: any WallClock,
         lock: any RunLock,
-        log: any Log
+        log: any Log,
+        notifier: any Notifier
     ) {
         self.messages = messages
         self.transcriber = transcriber
@@ -135,5 +155,6 @@ public struct Adapters {
         self.clock = clock
         self.lock = lock
         self.log = log
+        self.notifier = notifier
     }
 }

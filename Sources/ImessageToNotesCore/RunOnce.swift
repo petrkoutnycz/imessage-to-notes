@@ -128,6 +128,19 @@ private func processVoiceMessages(
         try adapters.state.markDone(guid: voiceMessage.guid, noteID: noteID, firstSeenAt: firstSeenAt)
         report.created.append(CreatedMessageNote(guid: voiceMessage.guid, noteID: noteID))
         try logStep(.done(noteID: noteID))
+        // The Message Note exists, so a failed notification is no reason to stop the run.
+        do {
+            try await adapters.notifier.send(MessageNote.notification(
+                trackedContactName: trackedContact.name,
+                sentAt: voiceMessage.sentAt,
+                noteID: noteID,
+                timeZone: timeZone
+            ))
+        } catch {
+            try logStep(.failed(step: .notify, error: String(describing: error)))
+            continue
+        }
+        try logStep(.notified(noteID: noteID))
     }
 }
 

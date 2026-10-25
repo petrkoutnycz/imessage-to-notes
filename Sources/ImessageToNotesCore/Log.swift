@@ -21,6 +21,8 @@ public enum LogEvent: Equatable, Sendable {
     /// The run could not delete old log files. The run goes on.
     case logCleanupFailed(error: String)
     case voiceMessage(VoiceMessageLogEntry)
+    /// A click on a notification did not open its Message Note.
+    case messageNoteOpenFailed(noteID: String, error: String)
 }
 
 /// What happened to one Voice Message in one step.
@@ -51,6 +53,7 @@ public enum VoiceMessageStep: String, Sendable {
     case transcribe
     case summarize
     case createMessageNote = "create-message-note"
+    case notify
 }
 
 public enum VoiceMessageStepStatus: Equatable, Sendable {
@@ -58,6 +61,8 @@ public enum VoiceMessageStepStatus: Equatable, Sendable {
     case transcribed
     case summarized
     case done(noteID: String)
+    /// The Notifier sent the notification about the Message Note.
+    case notified(noteID: String)
     /// `error` holds no Transcript or Summary text.
     case failed(step: VoiceMessageStep, error: String)
 }
@@ -78,6 +83,8 @@ extension LogEntry {
             fields += ["run failed", "error=\(quoted(error))"]
         case .logCleanupFailed(let error):
             fields += ["log cleanup failed", "error=\(quoted(error))"]
+        case .messageNoteOpenFailed(let noteID, let error):
+            fields += ["message note open failed", "note=\(noteID)", "error=\(quoted(error))"]
         case .voiceMessage(let entry):
             fields += [
                 "voice-message",
@@ -97,6 +104,8 @@ extension LogEntry {
                 fields.append("status=summarized")
             case .done(let noteID):
                 fields += ["status=done", "note=\(noteID)"]
+            case .notified(let noteID):
+                fields += ["status=notified", "note=\(noteID)"]
             case .failed(let step, let error):
                 fields += ["status=failed", "step=\(step.rawValue)", "error=\(quoted(error))"]
             }

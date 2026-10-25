@@ -22,6 +22,17 @@ final class AppleScriptNotesWriter: NotesWriter {
         }
         return noteID
     }
+
+    /// Shows the Message Note with `noteID` in the Notes app, in front of other apps.
+    func openMessageNote(id noteID: String) async throws {
+        let source = """
+            tell application "Notes"
+                show note id \(AppleScript.literal(noteID))
+                activate
+            end tell
+            """
+        try await MainActor.run { _ = try AppleScript.run(source) }
+    }
 }
 
 enum AppleScript {

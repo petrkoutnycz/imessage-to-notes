@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import Foundation
 import ImessageToNotesCore
@@ -15,9 +16,11 @@ enum Paths {
 @main
 struct ImessageToNotes {
     static func main() async {
-        let command = CommandLine.arguments.dropFirst().first ?? "run"
+        let command = CommandLine.arguments.dropFirst().first
         do {
             switch command {
+            case nil:
+                openClickedMessageNote()
             case "run":
                 try await run()
             case "probe":
@@ -26,6 +29,7 @@ struct ImessageToNotes {
                 try await sample(audioPath: CommandLine.arguments[2])
             default:
                 print("usage: imessage-to-notes [run | probe | sample <audio file>]")
+                print("With no command, the app opens the Message Note of a clicked notification.")
                 exit(64)
             }
         } catch {
@@ -37,6 +41,8 @@ struct ImessageToNotes {
     /// Turns every Voice Message from a Tracked Contact that is not done into a Message Note.
     @MainActor
     static func run() async throws {
+        // A click on a notification during the run opens its Message Note at once.
+        NotificationClickHandler.shared.install()
         let log = FileLog(directory: Paths.logs)
         let configuration: Configuration
         let adapters: Adapters
@@ -50,7 +56,8 @@ struct ImessageToNotes {
                 state: try SQLiteStateStore(path: Paths.stateStore.path),
                 clock: SystemClock(),
                 lock: FileRunLock(path: Paths.runLock.path),
-                log: log
+                log: log,
+                notifier: UserNotificationNotifier()
             )
         } catch {
             // launchd keeps no output of a background run, so the log is the only record of this failure.
@@ -70,6 +77,25 @@ struct ImessageToNotes {
             print("No new Message Note.")
         }
     }
+
+    /// macOS starts the app with no arguments after a click on one of its notifications,
+    /// and then hands the click to the notification center delegate.
+    @MainActor
+    static func openClickedMessageNote() {
+        let handler = NotificationClickHandler.shared
+        handler.onClickHandled = { NSApplication.shared.terminate(nil) }
+        handler.install()
+        // A start from the Finder brings no click. A click that arrives in time ends the app itself.
+        DispatchQueue.main.asyncAfter(deadline: .now() + clickWaitTime) {
+            if !handler.clickReceived {
+                NSApplication.shared.terminate(nil)
+            }
+        }
+        NSApplication.shared.run()
+    }
+
+    /// How long a start with no arguments waits for a notification click.
+    static let clickWaitTime: TimeInterval = 30
 
     /// Runs the real Transcriber and Summarizer on one audio file and prints the results.
     /// It writes nothing to disk except the Whisper model.

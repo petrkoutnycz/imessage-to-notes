@@ -50,6 +50,46 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     ))
 }
 
+@Test func newMessageNoteSendsOneNotificationWithNameAndTimeButNoSummary() async throws {
+    let summary = Summary(text: "Jana připomíná vyzvednutí balíku.", actionItems: ["Vyzvednout balík na poště"])
+    let mac = FakeMac(
+        voiceMessages: [voiceMessage],
+        transcripts: [voiceMessage.audioPath: transcript],
+        summaries: [transcript: summary]
+    )
+
+    try await mac.runOnce()
+
+    #expect(mac.notifier.notifications == [UserNotification(
+        title: "Nová hlasová zpráva od Jana Nováková zpracována",
+        body: "2026-10-20 08:30",
+        noteID: "x-coredata://note/1"
+    )])
+    let texts = mac.notifier.notifications.flatMap { [$0.title, $0.body] }.joined(separator: "\n")
+    for privateText in [transcript, summary.text] + summary.actionItems {
+        #expect(!texts.contains(privateText))
+    }
+}
+
+@Test func failedNotificationIsLoggedAndRunGoesOnToNextVoiceMessage() async throws {
+    let mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.receive("GUID-2", sentAt: sentAt.addingTimeInterval(60 * 60))
+    mac.notifier.failure = FakeError("Notifications are off")
+
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-1</div>", "<div>Shrnutí GUID-2</div>"])
+    #expect(try ["GUID-1", "GUID-2"].map { try mac.state.record(for: $0)?.status } == [.done, .done])
+    #expect(mac.log.entries.contains(LogEntry(time: runAt, event: .voiceMessage(VoiceMessageLogEntry(
+        guid: "GUID-2",
+        trackedContactName: "Jana Nováková",
+        sentAt: sentAt.addingTimeInterval(60 * 60),
+        audioDuration: 42.5,
+        status: .failed(step: .notify, error: "Notifications are off")
+    )))))
+}
+
 @Test func messageNoteWithoutActionItemsHasNoActionItemsList() async throws {
     let mac = FakeMac(
         voiceMessages: [voiceMessage],
@@ -74,6 +114,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     try await mac.runOnce()
 
     #expect(mac.notesWriter.messageNotes.count == 1)
+    #expect(mac.notifier.notifications.count == 1)
     #expect(try mac.state.record(for: "GUID-1")?.firstSeenAt == runAt)
 }
 
@@ -225,6 +266,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=transcribed
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=summarized
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=done note=x-coredata://note/1
+        2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=notified note=x-coredata://note/1
         2026-10-20T14:40:00+02:00 run finished created=1 already-done=0
         2026-10-20T14:40:00+02:00 run started
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) status=already-done
@@ -321,6 +363,7 @@ private struct FakeMac {
     let state = FakeStateStore()
     let lock = FakeRunLock()
     let log = FakeLog()
+    let notifier = FakeNotifier()
     var clock = FakeClock(now: runAt)
     var configuration = janaOnly
 
@@ -349,7 +392,8 @@ private struct FakeMac {
                 state: state ?? self.state,
                 clock: clock,
                 lock: lock ?? self.lock,
-                log: log ?? self.log
+                log: log ?? self.log,
+                notifier: notifier
             ),
             timeZone: prague
         )
