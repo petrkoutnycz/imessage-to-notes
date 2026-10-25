@@ -70,6 +70,13 @@ public protocol StateStore {
     func firstRunAt(recordingIfMissing now: Date) throws -> Date
 }
 
+/// Makes sure that only one run is active at a time.
+public protocol RunLock {
+    /// Takes the lock and returns true, or returns false at once if another run holds it.
+    func tryLock() throws -> Bool
+    func unlock()
+}
+
 public protocol WallClock {
     var now: Date { get }
 }
@@ -87,6 +94,7 @@ public struct Adapters {
     public var notes: any NotesWriter
     public var state: any StateStore
     public var clock: any WallClock
+    public var lock: any RunLock
 
     public init(
         messages: any MessagesReader,
@@ -94,7 +102,8 @@ public struct Adapters {
         summarizer: any Summarizer,
         notes: any NotesWriter,
         state: any StateStore,
-        clock: any WallClock
+        clock: any WallClock,
+        lock: any RunLock
     ) {
         self.messages = messages
         self.transcriber = transcriber
@@ -102,5 +111,6 @@ public struct Adapters {
         self.notes = notes
         self.state = state
         self.clock = clock
+        self.lock = lock
     }
 }

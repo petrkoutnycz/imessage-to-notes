@@ -2,6 +2,8 @@ import Foundation
 
 /// What one run did.
 public struct RunReport: Equatable, Sendable {
+    /// True when another run held the run lock, so this run did nothing.
+    public var lockHeldByAnotherRun = false
     /// GUIDs of candidate Voice Messages that were already done.
     public var alreadyDone: [String] = []
     /// New Message Notes, in order of arrival of their Voice Messages.
@@ -15,13 +17,18 @@ public struct CreatedMessageNote: Equatable, Sendable {
 }
 
 /// Does all the work of one run: every Voice Message from a Tracked Contact that is not done
-/// becomes one Message Note, in order of arrival.
+/// becomes one Message Note, in order of arrival. If another run is active, it does nothing.
 public func runOnce(
     configuration: Configuration,
     adapters: Adapters,
     timeZone: TimeZone = .current
 ) async throws -> RunReport {
     var report = RunReport()
+    guard try adapters.lock.tryLock() else {
+        report.lockHeldByAnotherRun = true
+        return report
+    }
+    defer { adapters.lock.unlock() }
     // The backfill start stays the same from run to run. Only an edit of `backfillDays` moves it.
     let backfillWindow = TimeInterval(configuration.backfillDays) * 24 * 60 * 60
     let backfillStart = try adapters.state.firstRunAt(recordingIfMissing: adapters.clock.now) - backfillWindow

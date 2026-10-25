@@ -90,3 +90,9 @@ struct FakeError: Error, CustomStringConvertible {
     var description: String
     init(_ description: String) { self.description = description }
 }
+
+/// A run lock that no other run ever holds.
+final class FakeRunLock: RunLock {
+    func tryLock() throws -> Bool { true }
+    func unlock() {}
+}

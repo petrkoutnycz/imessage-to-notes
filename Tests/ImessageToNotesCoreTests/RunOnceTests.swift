@@ -170,6 +170,36 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí ARRIVES-LATE</div>"])
 }
 
+@Test func runWhileAnotherRunHoldsTheLockCreatesNoMessageNote() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let lockPath = directory.appending(path: "run.lock").path
+    let mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    let otherRun = FileRunLock(path: lockPath)
+    #expect(try otherRun.tryLock())
+
+    try await mac.runOnce(lock: FileRunLock(path: lockPath))
+
+    #expect(mac.notesWriter.messageNotes.isEmpty)
+    #expect(try mac.state.record(for: "GUID-1") == nil)
+}
+
+@Test func runAfterEarlierRunEndsCreatesMessageNote() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let lockPath = directory.appending(path: "run.lock").path
+    let mac = FakeMac()
+    let earlierRunLock = FileRunLock(path: lockPath)
+    mac.receive("GUID-1", sentAt: sentAt)
+    try await mac.runOnce(lock: earlierRunLock)
+
+    mac.receive("GUID-2", sentAt: sentAt.addingTimeInterval(60 * 60))
+    try await mac.runOnce(lock: FileRunLock(path: lockPath))
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-1</div>", "<div>Shrnutí GUID-2</div>"])
+}
+
 /// One set of fake adapters that several runs share, like the Mac between two runs.
 private struct FakeMac {
     let messages: FakeMessagesReader
@@ -177,6 +207,7 @@ private struct FakeMac {
     let summarizer: FakeSummarizer
     let notesWriter = FakeNotesWriter()
     let state = FakeStateStore()
+    let lock = FakeRunLock()
     var clock = FakeClock(now: runAt)
     var configuration = janaOnly
 
@@ -194,7 +225,7 @@ private struct FakeMac {
         summarizer.summaries["Přepis \(guid)"] = Summary(text: "Shrnutí \(guid)", actionItems: [])
     }
 
-    func runOnce(state: (any StateStore)? = nil) async throws {
+    func runOnce(state: (any StateStore)? = nil, lock: (any RunLock)? = nil) async throws {
         _ = try await ImessageToNotesCore.runOnce(
             configuration: configuration,
             adapters: Adapters(
@@ -203,7 +234,8 @@ private struct FakeMac {
                 summarizer: summarizer,
                 notes: notesWriter,
                 state: state ?? self.state,
-                clock: clock
+                clock: clock,
+                lock: lock ?? self.lock
             ),
             timeZone: prague
         )

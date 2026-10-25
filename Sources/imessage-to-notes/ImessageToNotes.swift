@@ -7,6 +7,7 @@ enum Paths {
     static let support = URL.applicationSupportDirectory.appending(path: "imessage-to-notes")
     static let configuration = support.appending(path: "config.json")
     static let stateStore = support.appending(path: "state.sqlite")
+    static let runLock = support.appending(path: "run.lock")
     static let messagesDatabase = URL.homeDirectory.appending(path: "Library/Messages/chat.db")
 }
 
@@ -42,9 +43,14 @@ struct ImessageToNotes {
             summarizer: ClaudeSummarizer(model: configuration.claudeModel, apiKey: try Keychain.anthropicAPIKey()),
             notes: AppleScriptNotesWriter(),
             state: try SQLiteStateStore(path: Paths.stateStore.path),
-            clock: SystemClock()
+            clock: SystemClock(),
+            lock: FileRunLock(path: Paths.runLock.path)
         )
         let report = try await runOnce(configuration: configuration, adapters: adapters)
+        if report.lockHeldByAnotherRun {
+            print("Another run is active. This run does nothing.")
+            return
+        }
         print("Voice Messages already done: \(report.alreadyDone.count).")
         for created in report.created {
             print("Voice Message \(created.guid) became Message Note \(created.noteID).")

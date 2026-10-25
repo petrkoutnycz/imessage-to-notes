@@ -62,3 +62,19 @@ The command shows the Transcript in the terminal only. It writes no Transcript t
 
 1. Run `scripts/build-app.sh` again.
 2. Run the probe again. Make sure that it reads the Messages database with no new Full Disk Access grant.
+
+## Background runs
+
+A per-user launchd agent starts the app at login and every 5 minutes. Each start does one run and exits. The agent runs in the user session, so the app can use Notes and notifications. Each run takes the lock file `~/Library/Application Support/imessage-to-notes/run.lock` first. If another run holds the lock, the new run prints `Another run is active. This run does nothing.` and exits.
+
+1. Run `scripts/build-app.sh` in the repository folder.
+2. Run `scripts/load-agent.sh`. The script copies the app to `~/Applications/ImessageToNotes.app`. It writes the agent definition, a property list file, to `~/Library/LaunchAgents/cz.petrkoutny.imessage-to-notes.plist`, and loads the agent. The agent starts the first run at once.
+3. If macOS asks if the app can control Notes or use the keychain item, click Allow or Always Allow. launchd starts the binary directly and not through `open`, so macOS can ask again.
+4. Make sure that `~/Library/Logs/imessage-to-notes/agent.log` shows the output of the first run.
+5. Ask the Tracked Contact to send a Voice Message. Make sure that the Message Note appears in the Notes Folder within about 5 minutes, with no manual start.
+
+The app in `~/Applications` has the same signature as the app in `build/`, so it keeps Full Disk Access. If a new build is ready, run `scripts/load-agent.sh` again. To stop background runs, run `scripts/unload-agent.sh`. This script unloads the agent and removes its property list file. The app, the configuration and the State Store stay.
+
+If you run `scripts/load-agent.sh` or `scripts/unload-agent.sh` during a run, launchd stops that run. A run that stops after the Notes Writer creates the Message Note, but before the State Store records it, causes a duplicate Message Note in the next run.
+
+launchd starts no new run while a run is active. If a run waits for a permission dialog that nobody answers, no further runs occur. If `agent.log` shows no new output for more than 5 minutes, look for an open dialog.
