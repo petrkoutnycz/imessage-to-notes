@@ -37,19 +37,24 @@ public struct Configuration: Codable, Equatable, Sendable {
     public var backfillDays: Int
     /// True when the normal Message Note body ends with the Transcript. False if the file leaves it out.
     public var includeTranscript: Bool
+    /// How many hours after the first-seen time a failed step gets retries before the fallback Message Note.
+    /// 12 if the file leaves it out.
+    public var retryHours: Int
 
     public init(
         trackedContacts: [TrackedContact],
         notesFolder: String,
         claudeModel: String,
         backfillDays: Int = 7,
-        includeTranscript: Bool = false
+        includeTranscript: Bool = false,
+        retryHours: Int = 12
     ) {
         self.trackedContacts = trackedContacts
         self.notesFolder = notesFolder
         self.claudeModel = claudeModel
         self.backfillDays = backfillDays
         self.includeTranscript = includeTranscript
+        self.retryHours = retryHours
     }
 
     public init(from decoder: any Decoder) throws {
@@ -59,11 +64,17 @@ public struct Configuration: Codable, Equatable, Sendable {
             notesFolder: try container.decode(String.self, forKey: .notesFolder),
             claudeModel: try container.decode(String.self, forKey: .claudeModel),
             backfillDays: try container.decodeIfPresent(Int.self, forKey: .backfillDays) ?? 7,
-            includeTranscript: try container.decodeIfPresent(Bool.self, forKey: .includeTranscript) ?? false
+            includeTranscript: try container.decodeIfPresent(Bool.self, forKey: .includeTranscript) ?? false,
+            retryHours: try container.decodeIfPresent(Int.self, forKey: .retryHours) ?? 12
         )
         guard backfillDays >= 0 else {
             throw DecodingError.dataCorruptedError(
                 forKey: .backfillDays, in: container, debugDescription: "backfillDays must not be negative"
+            )
+        }
+        guard retryHours >= 0 else {
+            throw DecodingError.dataCorruptedError(
+                forKey: .retryHours, in: container, debugDescription: "retryHours must not be negative"
             )
         }
     }

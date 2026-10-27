@@ -15,7 +15,8 @@ public enum LogEvent: Equatable, Sendable {
     case runStarted
     /// Another run held the run lock, so this run did nothing.
     case runSkipped
-    case runFinished(created: Int, alreadyDone: Int)
+    /// `pending` counts the Voice Messages with a failed step that a later run tries again.
+    case runFinished(created: Int, alreadyDone: Int, pending: Int)
     /// A failure outside the steps of one Voice Message, for example in the Messages Reader.
     case runFailed(error: String)
     /// The run could not delete old log files. The run goes on.
@@ -61,6 +62,8 @@ public enum VoiceMessageStepStatus: Equatable, Sendable {
     case transcribed
     case summarized
     case done(noteID: String)
+    /// A step failed for the whole retry window, and the run created a fallback Message Note.
+    case fallback(noteID: String)
     /// The Notifier sent the notification about the Message Note.
     case notified(noteID: String)
     /// `error` holds no Transcript or Summary text.
@@ -77,8 +80,8 @@ extension LogEntry {
             fields.append("run started")
         case .runSkipped:
             fields.append("run skipped: another run is active")
-        case .runFinished(let created, let alreadyDone):
-            fields += ["run finished", "created=\(created)", "already-done=\(alreadyDone)"]
+        case .runFinished(let created, let alreadyDone, let pending):
+            fields += ["run finished", "created=\(created)", "already-done=\(alreadyDone)", "pending=\(pending)"]
         case .runFailed(let error):
             fields += ["run failed", "error=\(quoted(error))"]
         case .logCleanupFailed(let error):
@@ -104,6 +107,8 @@ extension LogEntry {
                 fields.append("status=summarized")
             case .done(let noteID):
                 fields += ["status=done", "note=\(noteID)"]
+            case .fallback(let noteID):
+                fields += ["status=fallback", "note=\(noteID)"]
             case .notified(let noteID):
                 fields += ["status=notified", "note=\(noteID)"]
             case .failed(let step, let error):

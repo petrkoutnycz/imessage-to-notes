@@ -71,10 +71,14 @@ struct ImessageToNotes {
         }
         print("Voice Messages already done: \(report.alreadyDone.count).")
         for created in report.created {
-            print("Voice Message \(created.guid) became Message Note \(created.noteID).")
+            let kind = created.isFallback ? "fallback Message Note" : "Message Note"
+            print("Voice Message \(created.guid) became \(kind) \(created.noteID).")
         }
         if report.created.isEmpty {
             print("No new Message Note.")
+        }
+        for guid in report.pending {
+            print("Voice Message \(guid) is pending. A later run tries again. The log has the error.")
         }
     }
 

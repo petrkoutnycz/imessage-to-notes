@@ -16,6 +16,22 @@ enum MessageNote {
         )
     }
 
+    /// The Tracked Contact name, the failed step and the sent time. Never the Transcript.
+    static func fallbackNotification(
+        _ fallback: Fallback,
+        trackedContactName: String,
+        sentAt: Date,
+        noteID: String,
+        timeZone: TimeZone
+    ) -> UserNotification {
+        let title = switch fallback {
+        case .summaryFailed: "Shrnutí hlasové zprávy od \(trackedContactName) selhalo"
+        case .transcriptionFailed: "Přepis hlasové zprávy od \(trackedContactName) selhal"
+        case .audioFileMissing: "Zvukový soubor hlasové zprávy od \(trackedContactName) chybí"
+        }
+        return UserNotification(title: title, body: localTime(sentAt, timeZone: timeZone), noteID: noteID)
+    }
+
     /// `YYYY-MM-DD HH:MM` in local time.
     private static func localTime(_ date: Date, timeZone: TimeZone) -> String {
         let formatter = DateFormatter()
@@ -40,6 +56,25 @@ enum MessageNote {
         }
         return html
     }
+
+    /// The body of a fallback Message Note. Only a failed Summary leaves a Transcript to show.
+    static func fallbackBody(_ fallback: Fallback) -> String {
+        switch fallback {
+        case .summaryFailed(let transcript):
+            "<div>Shrnutí se nepodařilo vytvořit</div><div><br></div><div>\(HTML.escape(transcript))</div>"
+        case .transcriptionFailed:
+            "<div>Přepis se nepodařilo vytvořit, takže chybí i shrnutí. Hlasová zpráva je v aplikaci Zprávy.</div>"
+        case .audioFileMissing:
+            "<div>Zvukový soubor hlasové zprávy na tomto Macu chybí, takže se nepodařilo vytvořit přepis ani shrnutí.</div>"
+        }
+    }
+}
+
+/// Why a Voice Message gets a fallback Message Note.
+enum Fallback {
+    case summaryFailed(transcript: String)
+    case transcriptionFailed
+    case audioFileMissing
 }
 
 public enum HTML {

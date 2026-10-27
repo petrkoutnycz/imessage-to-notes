@@ -8,5 +8,6 @@
   "notesFolder": "Hlasové zprávy",
   "claudeModel": "claude-sonnet-5-5",
   "backfillDays": 7,
-  "includeTranscript": false
+  "includeTranscript": false,
+  "retryHours": 12
 }

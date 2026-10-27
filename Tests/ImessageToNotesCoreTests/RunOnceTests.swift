@@ -323,10 +323,10 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=summarized
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=done note=x-coredata://note/1
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) duration=42.5s status=notified note=x-coredata://note/1
-        2026-10-20T14:40:00+02:00 run finished created=1 already-done=0
+        2026-10-20T14:40:00+02:00 run finished created=1 already-done=0 pending=0
         2026-10-20T14:40:00+02:00 run started
         2026-10-20T14:40:00+02:00 \(voiceMessageFields) status=already-done
-        2026-10-20T14:40:00+02:00 run finished created=0 already-done=1
+        2026-10-20T14:40:00+02:00 run finished created=0 already-done=1 pending=0
 
         """)
     for privateText in [transcript, summary.text] + summary.actionItems {
@@ -349,10 +349,9 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
         FakeError("AppleScript error -2700: Can't make \"\(htmlBody.prefix(60))…\" into type text.\nTranscript: \(transcript)")
     }
 
-    await #expect(throws: FakeError.self) { try await mac.runOnce() }
+    try await mac.runOnce()
 
-    let failed = try #require(mac.log.entries.last)
-    #expect(failed == LogEntry(time: runAt, event: .voiceMessage(VoiceMessageLogEntry(
+    #expect(mac.log.entries.contains(LogEntry(time: runAt, event: .voiceMessage(VoiceMessageLogEntry(
         guid: "GUID-1",
         trackedContactName: "Jana Nováková",
         sentAt: sentAt,
@@ -361,7 +360,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
             step: .createMessageNote,
             error: "AppleScript error -2700: Can't make \"[redacted]…\" into type text.\nTranscript: [redacted]"
         )
-    ))))
+    )))))
     let lines = mac.log.entries.map { $0.line(timeZone: prague) }.joined(separator: "\n")
     for privateText in [transcript, summary.text] + summary.actionItems {
         #expect(!lines.contains(privateText))
@@ -399,6 +398,258 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
 
     #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-1</div>"])
     #expect(mac.log.entries.contains(LogEntry(time: runAt, event: .logCleanupFailed(error: "Permission denied"))))
+}
+
+@Test func failedSummaryLeavesVoiceMessagePendingAndRunGoesOnToNextVoiceMessage() async throws {
+    let mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.receive("GUID-2", sentAt: sentAt.addingTimeInterval(60 * 60))
+    mac.summarizer.summaries["Přepis GUID-1"] = nil
+
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-2</div>"])
+    #expect(try mac.state.record(for: "GUID-1") == VoiceMessageRecord(
+        guid: "GUID-1",
+        status: .pending,
+        noteID: nil,
+        firstSeenAt: runAt,
+        failedAttempts: 1,
+        lastError: "no summary for transcript",
+        pendingTranscript: TranscribedAudio(transcript: "Přepis GUID-1", audioDuration: 42.5)
+    ))
+}
+
+@Test func retryAfterFailedSummaryUsesStoredTranscriptAndErasesItWithTheMessageNote() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let statePath = directory.appending(path: "state.sqlite").path
+    var mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.summarizer.summaries["Přepis GUID-1"] = nil
+    try await mac.runOnce(state: SQLiteStateStore(path: statePath))
+
+    mac.clock.now = runAt.addingTimeInterval(5 * 60)
+    mac.summarizer.summaries["Přepis GUID-1"] = Summary(text: "Shrnutí GUID-1", actionItems: [])
+    try await mac.runOnce(state: SQLiteStateStore(path: statePath))
+
+    let transcribedEntries = mac.log.entries.filter {
+        if case .voiceMessage(let entry) = $0.event { entry.status == .transcribed } else { false }
+    }
+    #expect(transcribedEntries.map(\.time) == [runAt])
+    #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-1</div>"])
+    #expect(mac.notifier.notifications.count == 1)
+    #expect(try SQLiteStateStore(path: statePath).record(for: "GUID-1") == VoiceMessageRecord(
+        guid: "GUID-1",
+        status: .done,
+        noteID: "x-coredata://note/1",
+        firstSeenAt: runAt,
+        failedAttempts: 1,
+        lastError: "no summary for transcript",
+        pendingTranscript: nil
+    ))
+}
+
+@Test func summaryThatFailsForTwelveHoursGivesFallbackMessageNoteWithTranscriptAndOneNotification() async throws {
+    var mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.summarizer.summaries["Přepis GUID-1"] = nil
+
+    for hours in [0, 6, 11.9, 12, 12.1] {
+        mac.clock.now = runAt.addingTimeInterval(hours * 60 * 60)
+        try await mac.runOnce()
+    }
+
+    #expect(mac.notesWriter.messageNotes == [FakeMessageNote(
+        id: "x-coredata://note/1",
+        notesFolder: "Hlasové zprávy",
+        title: "Jana Nováková – 2026-10-20 08:30",
+        body: "<div>Shrnutí se nepodařilo vytvořit</div><div><br></div><div>Přepis GUID-1</div>"
+    )])
+    #expect(mac.notifier.notifications == [UserNotification(
+        title: "Shrnutí hlasové zprávy od Jana Nováková selhalo",
+        body: "2026-10-20 08:30",
+        noteID: "x-coredata://note/1"
+    )])
+    #expect(try mac.state.record(for: "GUID-1") == VoiceMessageRecord(
+        guid: "GUID-1",
+        status: .fallback,
+        noteID: "x-coredata://note/1",
+        firstSeenAt: runAt,
+        failedAttempts: 4,
+        lastError: "no summary for transcript",
+        pendingTranscript: nil
+    ))
+}
+
+@Test func transcriptionThatFailsForTwelveHoursGivesFallbackMessageNoteWithErrorNoticeAndNoTranscript() async throws {
+    var mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.transcriber.failure = FakeError("Whisper cannot decode the audio")
+
+    for hours in [0, 6, 12, 12.1] {
+        mac.clock.now = runAt.addingTimeInterval(hours * 60 * 60)
+        try await mac.runOnce()
+    }
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == [
+        "<div>Přepis se nepodařilo vytvořit, takže chybí i shrnutí. Hlasová zpráva je v aplikaci Zprávy.</div>",
+    ])
+    #expect(mac.notifier.notifications == [UserNotification(
+        title: "Přepis hlasové zprávy od Jana Nováková selhal",
+        body: "2026-10-20 08:30",
+        noteID: "x-coredata://note/1"
+    )])
+    #expect(try mac.state.record(for: "GUID-1")?.status == .fallback)
+}
+
+@Test func missingAudioFileIsFailedStepThatSucceedsOnceTheFileArrives() async throws {
+    var mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.transcriber.transcripts["/attachments/GUID-1/Audio Message.caf"] = nil
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.isEmpty)
+    #expect(try mac.state.record(for: "GUID-1") == VoiceMessageRecord(
+        guid: "GUID-1",
+        status: .pending,
+        noteID: nil,
+        firstSeenAt: runAt,
+        failedAttempts: 1,
+        lastError: "The audio file is missing: /attachments/GUID-1/Audio Message.caf"
+    ))
+
+    mac.clock.now = runAt.addingTimeInterval(5 * 60)
+    mac.transcriber.transcripts["/attachments/GUID-1/Audio Message.caf"] = "Přepis GUID-1"
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == ["<div>Shrnutí GUID-1</div>"])
+    #expect(try mac.state.record(for: "GUID-1")?.status == .done)
+}
+
+@Test func audioFileMissingForTwelveHoursGivesFallbackMessageNoteThatSaysSo() async throws {
+    var mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.transcriber.transcripts["/attachments/GUID-1/Audio Message.caf"] = nil
+
+    for hours: TimeInterval in [0, 12] {
+        mac.clock.now = runAt.addingTimeInterval(hours * 60 * 60)
+        try await mac.runOnce()
+    }
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == [
+        "<div>Zvukový soubor hlasové zprávy na tomto Macu chybí, takže se nepodařilo vytvořit přepis ani shrnutí.</div>",
+    ])
+    #expect(mac.notifier.notifications.map(\.title) == ["Zvukový soubor hlasové zprávy od Jana Nováková chybí"])
+}
+
+@Test func logRecordsEachFailedAttemptAndTheFallbackButNoTranscript() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    var mac = FakeMac(voiceMessages: [voiceMessage], transcripts: [voiceMessage.audioPath: transcript])
+
+    try await mac.runOnce(log: FileLog(directory: directory, timeZone: prague))
+    // 12 hours later, in Prague, is the next day.
+    mac.clock.now = runAt.addingTimeInterval(12 * 60 * 60)
+    try await mac.runOnce(log: FileLog(directory: directory, timeZone: prague))
+
+    let voiceMessageFields = "voice-message guid=GUID-1 tracked-contact=\"Jana Nováková\" sent=2026-10-20T08:30:00+02:00 duration=42.5s"
+    let firstDay = try String(contentsOf: directory.appending(path: "2026-10-20.log"), encoding: .utf8)
+    #expect(firstDay == """
+        2026-10-20T14:40:00+02:00 run started
+        2026-10-20T14:40:00+02:00 \(voiceMessageFields) status=transcribed
+        2026-10-20T14:40:00+02:00 \(voiceMessageFields) status=failed step=summarize error="no summary for transcript"
+        2026-10-20T14:40:00+02:00 run finished created=0 already-done=0 pending=1
+
+        """)
+    let nextDay = try String(contentsOf: directory.appending(path: "2026-10-21.log"), encoding: .utf8)
+    #expect(nextDay == """
+        2026-10-21T02:40:00+02:00 run started
+        2026-10-21T02:40:00+02:00 \(voiceMessageFields) status=failed step=summarize error="no summary for transcript"
+        2026-10-21T02:40:00+02:00 \(voiceMessageFields) status=fallback note=x-coredata://note/1
+        2026-10-21T02:40:00+02:00 \(voiceMessageFields) status=notified note=x-coredata://note/1
+        2026-10-21T02:40:00+02:00 run finished created=1 already-done=0 pending=0
+
+        """)
+    #expect(!(firstDay + nextDay).contains(transcript))
+    #expect(mac.notesWriter.messageNotes.first?.body.contains(transcript) == true)
+}
+
+@Test func stateStoreFromBeforeTheRetryRuleKeepsDoneVoiceMessagesAndRecordsFailures() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    let statePath = directory.appending(path: "state.sqlite").path
+    let oldStateStore = Process()
+    oldStateStore.executableURL = URL(filePath: "/usr/bin/sqlite3")
+    oldStateStore.arguments = [statePath, """
+        CREATE TABLE voice_messages (guid TEXT PRIMARY KEY, status TEXT NOT NULL, first_seen_at REAL NOT NULL, note_id TEXT);
+        CREATE TABLE first_run (id INTEGER PRIMARY KEY CHECK (id = 1), first_run_at REAL NOT NULL);
+        INSERT INTO voice_messages VALUES ('GUID-1', 'done', \(runAt.timeIntervalSince1970), 'x-coredata://note/old');
+        INSERT INTO first_run VALUES (1, \(runAt.timeIntervalSince1970));
+        """]
+    try oldStateStore.run()
+    oldStateStore.waitUntilExit()
+    let mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.receive("GUID-2", sentAt: sentAt.addingTimeInterval(60 * 60))
+    mac.summarizer.summaries["Přepis GUID-2"] = nil
+
+    try await mac.runOnce(state: SQLiteStateStore(path: statePath))
+
+    #expect(mac.notesWriter.messageNotes.isEmpty)
+    let state = try SQLiteStateStore(path: statePath)
+    #expect(try state.record(for: "GUID-1") == VoiceMessageRecord(
+        guid: "GUID-1", status: .done, noteID: "x-coredata://note/old", firstSeenAt: runAt
+    ))
+    #expect(try state.record(for: "GUID-2") == VoiceMessageRecord(
+        guid: "GUID-2",
+        status: .pending,
+        noteID: nil,
+        firstSeenAt: runAt,
+        failedAttempts: 1,
+        lastError: "no summary for transcript",
+        pendingTranscript: TranscribedAudio(transcript: "Přepis GUID-2", audioDuration: 42.5)
+    ))
+}
+
+@Test func fallbackComesAfterAsManyHoursAsTheConfigurationSays() async throws {
+    var mac = FakeMac()
+    mac.configuration.retryHours = 2
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.summarizer.summaries["Přepis GUID-1"] = nil
+
+    for hours: TimeInterval in [0, 1.9, 2] {
+        mac.clock.now = runAt.addingTimeInterval(hours * 60 * 60)
+        try await mac.runOnce()
+    }
+
+    #expect(mac.notesWriter.messageNotes.map(\.body) == [
+        "<div>Shrnutí se nepodařilo vytvořit</div><div><br></div><div>Přepis GUID-1</div>",
+    ])
+}
+
+@Test func failedFallbackMessageNoteLeavesVoiceMessagePendingWithTheNotesError() async throws {
+    var mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.summarizer.summaries["Přepis GUID-1"] = nil
+    try await mac.runOnce()
+
+    mac.clock.now = runAt.addingTimeInterval(12 * 60 * 60)
+    mac.notesWriter.failure = { _ in FakeError("Notes is not responding") }
+    try await mac.runOnce()
+
+    #expect(mac.notesWriter.messageNotes.isEmpty)
+    #expect(mac.notifier.notifications.isEmpty)
+    #expect(try mac.state.record(for: "GUID-1") == VoiceMessageRecord(
+        guid: "GUID-1",
+        status: .pending,
+        noteID: nil,
+        firstSeenAt: runAt,
+        failedAttempts: 2,
+        lastError: "Notes is not responding",
+        pendingTranscript: TranscribedAudio(transcript: "Přepis GUID-1", audioDuration: 42.5)
+    ))
 }
 
 @Test func runThatCannotTakeTheLockLogsTheError() async throws {

@@ -16,9 +16,11 @@ final class FakeMessagesReader: MessagesReader {
     }
 }
 
-/// Every audio file is 42.5 seconds long.
+/// Every audio file is 42.5 seconds long. A path with no Transcript has no audio file.
 final class FakeTranscriber: Transcriber {
     var transcripts: [String: String]
+    /// When set, every transcription of an audio file fails with this error.
+    var failure: (any Error)?
 
     init(_ transcripts: [String: String]) {
         self.transcripts = transcripts
@@ -26,7 +28,10 @@ final class FakeTranscriber: Transcriber {
 
     func transcribe(audioAt path: String) async throws -> TranscribedAudio {
         guard let transcript = transcripts[path] else {
-            throw FakeError("no audio at \(path)")
+            throw MissingAudioFile(path: path)
+        }
+        if let failure {
+            throw failure
         }
         return TranscribedAudio(transcript: transcript, audioDuration: 42.5)
     }
@@ -77,8 +82,33 @@ final class FakeStateStore: StateStore {
         records[guid]
     }
 
+    func storeTranscript(_ transcribed: TranscribedAudio, guid: String, firstSeenAt: Date) throws {
+        var record = records[guid] ?? VoiceMessageRecord(guid: guid, status: .pending, noteID: nil, firstSeenAt: firstSeenAt)
+        record.pendingTranscript = transcribed
+        records[guid] = record
+    }
+
+    func recordFailure(guid: String, error: String, firstSeenAt: Date) throws {
+        var record = records[guid] ?? VoiceMessageRecord(guid: guid, status: .pending, noteID: nil, firstSeenAt: firstSeenAt)
+        record.failedAttempts += 1
+        record.lastError = error
+        records[guid] = record
+    }
+
     func markDone(guid: String, noteID: String, firstSeenAt: Date) throws {
-        records[guid] = VoiceMessageRecord(guid: guid, status: .done, noteID: noteID, firstSeenAt: firstSeenAt)
+        mark(guid: guid, status: .done, noteID: noteID, firstSeenAt: firstSeenAt)
+    }
+
+    func markFallback(guid: String, noteID: String, firstSeenAt: Date) throws {
+        mark(guid: guid, status: .fallback, noteID: noteID, firstSeenAt: firstSeenAt)
+    }
+
+    private func mark(guid: String, status: VoiceMessageStatus, noteID: String, firstSeenAt: Date) {
+        var record = records[guid] ?? VoiceMessageRecord(guid: guid, status: status, noteID: nil, firstSeenAt: firstSeenAt)
+        record.status = status
+        record.noteID = noteID
+        record.pendingTranscript = nil
+        records[guid] = record
     }
 
     func firstRunAt(recordingIfMissing now: Date) throws -> Date {

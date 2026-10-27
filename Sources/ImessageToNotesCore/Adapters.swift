@@ -39,7 +39,11 @@ public struct Summary: Equatable, Sendable {
 }
 
 public enum VoiceMessageStatus: String, Sendable {
+    /// A step failed, and a later run tries again.
+    case pending
     case done
+    /// A step failed for the whole retry window, and the Voice Message has a fallback Message Note.
+    case fallback
 }
 
 /// What the State Store knows about one Voice Message.
@@ -48,18 +52,47 @@ public struct VoiceMessageRecord: Equatable, Sendable {
     public var status: VoiceMessageStatus
     public var noteID: String?
     public var firstSeenAt: Date
+    /// The number of runs in which a step failed.
+    public var failedAttempts: Int
+    /// The error of the last failed step, with no Transcript or Summary text.
+    public var lastError: String?
+    /// The Transcript of a pending Voice Message, so a retry does not transcribe again.
+    /// The State Store erases it when the Message Note exists.
+    public var pendingTranscript: TranscribedAudio?
 
-    public init(guid: String, status: VoiceMessageStatus, noteID: String?, firstSeenAt: Date) {
+    public init(
+        guid: String,
+        status: VoiceMessageStatus,
+        noteID: String?,
+        firstSeenAt: Date,
+        failedAttempts: Int = 0,
+        lastError: String? = nil,
+        pendingTranscript: TranscribedAudio? = nil
+    ) {
         self.guid = guid
         self.status = status
         self.noteID = noteID
         self.firstSeenAt = firstSeenAt
+        self.failedAttempts = failedAttempts
+        self.lastError = lastError
+        self.pendingTranscript = pendingTranscript
     }
 }
 
 public protocol MessagesReader {
     /// Voice Messages from the given Handles, sent on or after `start`, in order of arrival.
     func voiceMessages(fromHandles handles: [String], since start: Date) throws -> [VoiceMessage]
+}
+
+/// The audio file of a Voice Message is not on this Mac, for example because it is still downloading.
+public struct MissingAudioFile: Error, CustomStringConvertible {
+    public var path: String
+
+    public init(path: String) {
+        self.path = path
+    }
+
+    public var description: String { "The audio file is missing: \(path)" }
 }
 
 public protocol Transcriber {
@@ -77,7 +110,14 @@ public protocol NotesWriter {
 
 public protocol StateStore {
     func record(for guid: String) throws -> VoiceMessageRecord?
+    /// Keeps the Transcript of a Voice Message that has no Message Note yet.
+    func storeTranscript(_ transcribed: TranscribedAudio, guid: String, firstSeenAt: Date) throws
+    /// Leaves the Voice Message pending and counts one more failed attempt.
+    func recordFailure(guid: String, error: String, firstSeenAt: Date) throws
+    /// Marks the Voice Message done and erases its pending Transcript.
     func markDone(guid: String, noteID: String, firstSeenAt: Date) throws
+    /// Marks the Voice Message fallback and erases its pending Transcript.
+    func markFallback(guid: String, noteID: String, firstSeenAt: Date) throws
     /// The time of the first run. The first call records `now` and returns it.
     func firstRunAt(recordingIfMissing now: Date) throws -> Date
 }

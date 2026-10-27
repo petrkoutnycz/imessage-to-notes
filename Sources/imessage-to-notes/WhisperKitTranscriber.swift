@@ -16,7 +16,7 @@ final class WhisperKitTranscriber: Transcriber {
 
     func transcribe(audioAt path: String) async throws -> TranscribedAudio {
         guard FileManager.default.fileExists(atPath: path) else {
-            throw AdapterError("The audio file is missing: \(path)")
+            throw MissingAudioFile(path: path)
         }
         let audioFile = try AVAudioFile(forReading: URL(filePath: path))
         let audioDuration = Double(audioFile.length) / audioFile.fileFormat.sampleRate
