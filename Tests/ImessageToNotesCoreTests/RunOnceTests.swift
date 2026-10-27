@@ -661,6 +661,96 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     #expect(mac.log.entries == [LogEntry(time: runAt, event: .runFailed(error: "Cannot open the lock file"))])
 }
 
+@Test func missingNotesFolderStopsRunWithNoMessageNoteAndNoNewFolder() async throws {
+    let mac = FakeMac()
+    mac.receive("GUID-1", sentAt: sentAt)
+    mac.notesWriter.notesFolders = ["Poznámky"]
+
+    let report = try await mac.runOnce()
+
+    #expect(report.notesFolderMissing)
+    #expect(mac.notesWriter.messageNotes.isEmpty)
+    #expect(mac.notesWriter.notesFolders == ["Poznámky"])
+    #expect(try mac.state.record(for: "GUID-1") == nil)
+    #expect(mac.log.entries.map(\.event) == [
+        .runStarted, .notesFolderMissing(notesFolder: "Hlasové zprávy"), .notesFolderNotified,
+    ])
+}
+
+@Test func missingNotesFolderSendsNotificationAtMostOnceEveryTwentyFourHours() async throws {
+    var mac = FakeMac()
+    mac.notesWriter.notesFolders = []
+
+    for hours in [0, 0.1, 23.9, 24, 30, 47.9, 48] {
+        mac.clock.now = runAt.addingTimeInterval(hours * 60 * 60)
+        try await mac.runOnce()
+    }
+
+    let notification = UserNotification(
+        title: "Složka pro hlasové zprávy chybí",
+        body: "V Poznámkách v účtu iCloud chybí složka „Hlasové zprávy“. Vytvořte ji.",
+        noteID: nil
+    )
+    #expect(mac.notifier.notifications == [notification, notification, notification])
+}
+
+@Test func runAfterTheUserCreatesTheNotesFolderProcessesEveryWaitingVoiceMessage() async throws {
+    var mac = FakeMac()
+    mac.notesWriter.notesFolders = []
+    mac.receive("BEFORE-FIRST-RUN", sentAt: runAt.addingTimeInterval(-6 * oneDay))
+    try await mac.runOnce()
+
+    // Ten days later, the user creates the Notes Folder.
+    mac.receive("WHILE-MISSING", sentAt: runAt.addingTimeInterval(oneDay))
+    mac.clock.now = runAt.addingTimeInterval(10 * oneDay)
+    try await mac.runOnce()
+    mac.notesWriter.notesFolders = ["Hlasové zprávy"]
+    mac.clock.now += 5 * 60
+    let report = try await mac.runOnce()
+
+    #expect(!report.notesFolderMissing)
+    #expect(mac.notesWriter.messageNotes.map(\.body) == [
+        "<div>Shrnutí BEFORE-FIRST-RUN</div>", "<div>Shrnutí WHILE-MISSING</div>",
+    ])
+    #expect(try ["BEFORE-FIRST-RUN", "WHILE-MISSING"].map { try mac.state.record(for: $0)?.status } == [.done, .done])
+}
+
+@Test func failedNotesFolderNotificationIsLoggedAndTheNextRunTriesAgain() async throws {
+    var mac = FakeMac()
+    mac.notesWriter.notesFolders = []
+    mac.notifier.failure = FakeError("Notifications are off")
+    try await mac.runOnce()
+
+    mac.notifier.failure = nil
+    mac.clock.now = runAt.addingTimeInterval(5 * 60)
+    try await mac.runOnce()
+
+    #expect(mac.notifier.notifications.count == 1)
+    #expect(mac.log.entries.map { $0.line(timeZone: prague) } == [
+        "2026-10-20T14:40:00+02:00 run started",
+        "2026-10-20T14:40:00+02:00 run stopped: notes folder missing notes-folder=\"Hlasové zprávy\"",
+        "2026-10-20T14:40:00+02:00 notes folder notification failed error=\"Notifications are off\"",
+        "2026-10-20T14:45:00+02:00 run started",
+        "2026-10-20T14:45:00+02:00 run stopped: notes folder missing notes-folder=\"Hlasové zprávy\"",
+        "2026-10-20T14:45:00+02:00 notes folder notification sent",
+    ])
+}
+
+@Test func notesFolderNotificationLimitStaysAfterStateStoreReopens() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let statePath = directory.appending(path: "state.sqlite").path
+    var mac = FakeMac()
+    mac.notesWriter.notesFolders = []
+
+    for hours in [0, 23.9, 24] {
+        mac.clock.now = runAt.addingTimeInterval(hours * 60 * 60)
+        try await mac.runOnce(state: SQLiteStateStore(path: statePath))
+    }
+
+    #expect(mac.notifier.notifications.count == 2)
+}
+
 /// One set of fake adapters that several runs share, like the Mac between two runs.
 private struct FakeMac {
     let messages: FakeMessagesReader
@@ -688,8 +778,9 @@ private struct FakeMac {
         summarizer.summaries["Přepis \(guid)"] = Summary(text: "Shrnutí \(guid)", actionItems: [])
     }
 
-    func runOnce(state: (any StateStore)? = nil, lock: (any RunLock)? = nil, log: (any Log)? = nil) async throws {
-        _ = try await ImessageToNotesCore.runOnce(
+    @discardableResult
+    func runOnce(state: (any StateStore)? = nil, lock: (any RunLock)? = nil, log: (any Log)? = nil) async throws -> RunReport {
+        try await ImessageToNotesCore.runOnce(
             configuration: configuration,
             adapters: Adapters(
                 messages: messages,

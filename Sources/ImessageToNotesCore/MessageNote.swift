@@ -70,6 +70,17 @@ enum MessageNote {
     }
 }
 
+extension UserNotification {
+    /// The notification about a missing Notes Folder. A click opens nothing, because no Message Note exists.
+    static func notesFolderMissing(_ notesFolder: String) -> UserNotification {
+        UserNotification(
+            title: "Složka pro hlasové zprávy chybí",
+            body: "V Poznámkách v účtu iCloud chybí složka „\(notesFolder)“. Vytvořte ji.",
+            noteID: nil
+        )
+    }
+}
+
 /// Why a Voice Message gets a fallback Message Note.
 enum Fallback {
     case summaryFailed(transcript: String)

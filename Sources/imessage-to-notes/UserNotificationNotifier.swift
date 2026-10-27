@@ -28,8 +28,11 @@ final class UserNotificationNotifier: Notifier {
         let content = UNMutableNotificationContent()
         content.title = notification.title
         content.body = notification.body
-        content.userInfo = [Self.noteIDKey: notification.noteID]
-        try await center.add(UNNotificationRequest(identifier: notification.noteID, content: content, trigger: nil))
+        if let noteID = notification.noteID {
+            content.userInfo = [Self.noteIDKey: noteID]
+        }
+        let identifier = notification.noteID ?? UUID().uuidString
+        try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
 
     private func makeSurePermissionIsGranted(_ center: UNUserNotificationCenter) async throws {

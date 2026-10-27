@@ -21,6 +21,12 @@ public enum LogEvent: Equatable, Sendable {
     case runFailed(error: String)
     /// The run could not delete old log files. The run goes on.
     case logCleanupFailed(error: String)
+    /// The iCloud account has no Notes Folder, so the run stopped before any Voice Message.
+    case notesFolderMissing(notesFolder: String)
+    /// The Notifier sent the notification about the missing Notes Folder.
+    case notesFolderNotified
+    /// The Notifier could not send the notification about the missing Notes Folder. The next run tries again.
+    case notesFolderNotificationFailed(error: String)
     case voiceMessage(VoiceMessageLogEntry)
     /// A click on a notification did not open its Message Note.
     case messageNoteOpenFailed(noteID: String, error: String)
@@ -86,6 +92,12 @@ extension LogEntry {
             fields += ["run failed", "error=\(quoted(error))"]
         case .logCleanupFailed(let error):
             fields += ["log cleanup failed", "error=\(quoted(error))"]
+        case .notesFolderMissing(let notesFolder):
+            fields += ["run stopped: notes folder missing", "notes-folder=\(quoted(notesFolder))"]
+        case .notesFolderNotified:
+            fields.append("notes folder notification sent")
+        case .notesFolderNotificationFailed(let error):
+            fields += ["notes folder notification failed", "error=\(quoted(error))"]
         case .messageNoteOpenFailed(let noteID, let error):
             fields += ["message note open failed", "note=\(noteID)", "error=\(quoted(error))"]
         case .voiceMessage(let entry):

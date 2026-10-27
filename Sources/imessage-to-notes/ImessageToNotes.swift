@@ -69,6 +69,11 @@ struct ImessageToNotes {
             print("Another run is active. This run does nothing.")
             return
         }
+        if report.notesFolderMissing {
+            print("The Notes Folder \"\(configuration.notesFolder)\" is missing in the \(AppleScriptNotesWriter.accountName) account. "
+                + "This run processed no Voice Message. Create the folder, and the next run processes the waiting Voice Messages.")
+            return
+        }
         print("Voice Messages already done: \(report.alreadyDone.count).")
         for created in report.created {
             let kind = created.isFallback ? "fallback Message Note" : "Message Note"
@@ -145,11 +150,8 @@ struct ImessageToNotes {
         let accounts = try AppleScript.run("tell application \"Notes\" to get name of every account")
         let names = (0..<accounts.numberOfItems).compactMap { accounts.atIndex($0 + 1)?.stringValue }
         print("Notes accounts: \(names)")
-        let folderExists = try AppleScript.run("""
-            tell application "Notes" to exists folder \(AppleScript.literal(configuration.notesFolder)) \
-            of account \(AppleScript.literal(AppleScriptNotesWriter.accountName))
-            """)
+        let folderExists = try await AppleScriptNotesWriter().notesFolderExists(configuration.notesFolder)
         print("Notes Folder \"\(configuration.notesFolder)\" in account \(AppleScriptNotesWriter.accountName): "
-            + (folderExists.booleanValue ? "exists" : "MISSING"))
+            + (folderExists ? "exists" : "MISSING"))
     }
 }

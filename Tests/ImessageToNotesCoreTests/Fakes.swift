@@ -61,12 +61,21 @@ struct FakeMessageNote: Equatable {
 
 final class FakeNotesWriter: NotesWriter {
     private(set) var messageNotes: [FakeMessageNote] = []
+    /// The folders of the iCloud account. Only the user creates a folder.
+    var notesFolders: Set<String> = ["Hlasové zprávy"]
     /// When set, every new Message Note fails with the error that this returns for its HTML body.
     var failure: ((String) -> any Error)?
+
+    func notesFolderExists(_ notesFolder: String) async throws -> Bool {
+        notesFolders.contains(notesFolder)
+    }
 
     func createMessageNote(inFolder notesFolder: String, title: String, htmlBody: String) async throws -> String {
         if let failure {
             throw failure(htmlBody)
+        }
+        guard notesFolders.contains(notesFolder) else {
+            throw FakeError("Notes got an error: Can’t get folder \"\(notesFolder)\".")
         }
         let id = "x-coredata://note/\(messageNotes.count + 1)"
         messageNotes.append(FakeMessageNote(id: id, notesFolder: notesFolder, title: title, body: htmlBody))
@@ -77,6 +86,7 @@ final class FakeNotesWriter: NotesWriter {
 final class FakeStateStore: StateStore {
     private(set) var records: [String: VoiceMessageRecord] = [:]
     private var firstRunAt: Date?
+    private var notesFolderNotification: Date?
 
     func record(for guid: String) throws -> VoiceMessageRecord? {
         records[guid]
@@ -115,6 +125,14 @@ final class FakeStateStore: StateStore {
         let firstRunAt = self.firstRunAt ?? now
         self.firstRunAt = firstRunAt
         return firstRunAt
+    }
+
+    func lastNotesFolderNotificationAt() throws -> Date? {
+        notesFolderNotification
+    }
+
+    func recordNotesFolderNotification(at time: Date) throws {
+        notesFolderNotification = time
     }
 }
 

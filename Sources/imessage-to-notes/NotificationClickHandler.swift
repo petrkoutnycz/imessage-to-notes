@@ -22,9 +22,9 @@ final class NotificationClickHandler: NSObject, UNUserNotificationCenterDelegate
         _ center: UNUserNotificationCenter,
         didReceive response: UNNotificationResponse
     ) async {
-        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier,
-              let noteID = response.notification.request.content.userInfo[UserNotificationNotifier.noteIDKey] as? String
-        else { return }
+        guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
+        // A notification about a missing Notes Folder has no Message Note to open.
+        let noteID = response.notification.request.content.userInfo[UserNotificationNotifier.noteIDKey] as? String
         await open(noteID)
     }
 
@@ -36,8 +36,15 @@ final class NotificationClickHandler: NSObject, UNUserNotificationCenterDelegate
         [.banner, .list]
     }
 
-    private func open(_ noteID: String) async {
+    private func open(_ noteID: String?) async {
         clickReceived = true
+        if let noteID {
+            await openMessageNote(noteID)
+        }
+        onClickHandled?()
+    }
+
+    private func openMessageNote(_ noteID: String) async {
         do {
             try await AppleScriptNotesWriter().openMessageNote(id: noteID)
         } catch {
@@ -47,6 +54,5 @@ final class NotificationClickHandler: NSObject, UNUserNotificationCenterDelegate
                 event: .messageNoteOpenFailed(noteID: noteID, error: String(describing: error))
             ))
         }
-        onClickHandled?()
     }
 }

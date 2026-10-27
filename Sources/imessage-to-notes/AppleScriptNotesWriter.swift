@@ -6,6 +6,14 @@ import ImessageToNotesCore
 final class AppleScriptNotesWriter: NotesWriter {
     static let accountName = "iCloud"
 
+    func notesFolderExists(_ notesFolder: String) async throws -> Bool {
+        let source = """
+            tell application "Notes" to exists folder \(AppleScript.literal(notesFolder)) \
+            of account \(AppleScript.literal(Self.accountName))
+            """
+        return try await MainActor.run { try AppleScript.run(source).booleanValue }
+    }
+
     func createMessageNote(inFolder notesFolder: String, title: String, htmlBody: String) async throws -> String {
         // Notes takes the note title from the first line of the body.
         let body = "<div><h1>\(HTML.escape(title))</h1></div>" + htmlBody

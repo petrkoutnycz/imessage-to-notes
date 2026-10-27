@@ -104,6 +104,8 @@ public protocol Summarizer {
 }
 
 public protocol NotesWriter {
+    /// True if the iCloud account has a folder with the name `notesFolder`.
+    func notesFolderExists(_ notesFolder: String) async throws -> Bool
     /// Creates a Message Note and returns its note ID.
     func createMessageNote(inFolder notesFolder: String, title: String, htmlBody: String) async throws -> String
 }
@@ -120,6 +122,10 @@ public protocol StateStore {
     func markFallback(guid: String, noteID: String, firstSeenAt: Date) throws
     /// The time of the first run. The first call records `now` and returns it.
     func firstRunAt(recordingIfMissing now: Date) throws -> Date
+    /// The time of the last notification about a missing Notes Folder, or nil if none was sent.
+    func lastNotesFolderNotificationAt() throws -> Date?
+    /// Records `time` as the time of the last notification about a missing Notes Folder.
+    func recordNotesFolderNotification(at time: Date) throws
 }
 
 /// Makes sure that only one run is active at a time.
@@ -141,10 +147,10 @@ public protocol Log {
 public struct UserNotification: Equatable, Sendable {
     public var title: String
     public var body: String
-    /// The Message Note that a click on the notification opens.
-    public var noteID: String
+    /// The Message Note that a click on the notification opens, or nil if a click opens nothing.
+    public var noteID: String?
 
-    public init(title: String, body: String, noteID: String) {
+    public init(title: String, body: String, noteID: String?) {
         self.title = title
         self.body = body
         self.noteID = noteID

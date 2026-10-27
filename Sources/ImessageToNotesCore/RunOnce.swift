@@ -4,6 +4,8 @@ import Foundation
 public struct RunReport: Equatable, Sendable {
     /// True when another run held the run lock, so this run did nothing.
     public var lockHeldByAnotherRun = false
+    /// True when the iCloud account has no Notes Folder, so this run processed no Voice Message.
+    public var notesFolderMissing = false
     /// GUIDs of candidate Voice Messages that were already done.
     public var alreadyDone: [String] = []
     /// New Message Notes, in order of arrival of their Voice Messages.
@@ -19,6 +21,9 @@ public struct CreatedMessageNote: Equatable, Sendable {
     /// True for a fallback Message Note after a step failed for the whole retry window.
     public var isFallback: Bool
 }
+
+/// The shortest time between two notifications about a missing Notes Folder.
+let notesFolderNotificationInterval: TimeInterval = 24 * 60 * 60
 
 /// How long the run log keeps its files.
 let logRetention: TimeInterval = 30 * 24 * 60 * 60
@@ -54,7 +59,23 @@ public func runOnce(
         try log.write(LogEntry(time: adapters.clock.now, event: .logCleanupFailed(error: String(describing: error))))
     }
     do {
-        try await processVoiceMessages(configuration: configuration, adapters: adapters, timeZone: timeZone, report: &report)
+        // The first run fixes the backfill start, also if it stops for a missing Notes Folder.
+        // So the Voice Messages that wait for the Notes Folder all get a Message Note.
+        let firstRunAt = try adapters.state.firstRunAt(recordingIfMissing: adapters.clock.now)
+        // The run never creates the Notes Folder. The user creates it, and a later run processes the waiting Voice Messages.
+        guard try await adapters.notes.notesFolderExists(configuration.notesFolder) else {
+            report.notesFolderMissing = true
+            try log.write(LogEntry(time: adapters.clock.now, event: .notesFolderMissing(notesFolder: configuration.notesFolder)))
+            try await notifyAboutMissingNotesFolder(configuration.notesFolder, adapters: adapters)
+            return report
+        }
+        try await processVoiceMessages(
+            configuration: configuration,
+            adapters: adapters,
+            firstRunAt: firstRunAt,
+            timeZone: timeZone,
+            report: &report
+        )
     } catch {
         try? log.write(LogEntry(time: adapters.clock.now, event: .runFailed(error: String(describing: error))))
         throw error
@@ -66,15 +87,34 @@ public func runOnce(
     return report
 }
 
+/// Sends the notification about the missing Notes Folder, unless one went out in the last 24 hours.
+/// A failed notification does not count, so the next run tries again.
+private func notifyAboutMissingNotesFolder(_ notesFolder: String, adapters: Adapters) async throws {
+    let now = adapters.clock.now
+    if let lastNotification = try adapters.state.lastNotesFolderNotificationAt(),
+       now.timeIntervalSince(lastNotification) < notesFolderNotificationInterval {
+        return
+    }
+    do {
+        try await adapters.notifier.send(.notesFolderMissing(notesFolder))
+    } catch {
+        try adapters.log.write(LogEntry(time: now, event: .notesFolderNotificationFailed(error: String(describing: error))))
+        return
+    }
+    try adapters.state.recordNotesFolderNotification(at: now)
+    try adapters.log.write(LogEntry(time: now, event: .notesFolderNotified))
+}
+
 private func processVoiceMessages(
     configuration: Configuration,
     adapters: Adapters,
+    firstRunAt: Date,
     timeZone: TimeZone,
     report: inout RunReport
 ) async throws {
     // The backfill start stays the same from run to run. Only an edit of `backfillDays` moves it.
     let backfillWindow = TimeInterval(configuration.backfillDays) * 24 * 60 * 60
-    let backfillStart = try adapters.state.firstRunAt(recordingIfMissing: adapters.clock.now) - backfillWindow
+    let backfillStart = firstRunAt - backfillWindow
     let candidates = try adapters.messages.voiceMessages(fromHandles: configuration.handles, since: backfillStart)
     for voiceMessage in candidates {
         guard let trackedContact = configuration.trackedContact(for: voiceMessage.handle) else { continue }
@@ -102,16 +142,16 @@ private func processVoiceMessages(
                 throw StepFailure(step: step, error: error, loggedError: loggedError)
             }
         }
-        /// Sends the notification about a new Message Note. The Message Note exists,
+        /// Sends the notification about the new Message Note with `noteID`. The Message Note exists,
         /// so a failed notification is no reason to stop the run.
-        func notify(_ notification: UserNotification) async throws {
+        func notify(_ notification: UserNotification, aboutMessageNote noteID: String) async throws {
             do {
                 try await adapters.notifier.send(notification)
             } catch {
                 try logStep(.failed(step: .notify, error: String(describing: error)))
                 return
             }
-            try logStep(.notified(noteID: notification.noteID))
+            try logStep(.notified(noteID: noteID))
         }
         let record = try adapters.state.record(for: voiceMessage.guid)
         if let record, record.status != .pending {
@@ -164,7 +204,7 @@ private func processVoiceMessages(
                 sentAt: voiceMessage.sentAt,
                 noteID: noteID,
                 timeZone: timeZone
-            ))
+            ), aboutMessageNote: noteID)
         } catch let failure as StepFailure {
             // Before the end of the retry window, the Voice Message stays pending, and the next run tries again.
             // A failed Message Note has no fallback, because a fallback Message Note fails the same way.
@@ -197,7 +237,7 @@ private func processVoiceMessages(
                 sentAt: voiceMessage.sentAt,
                 noteID: noteID,
                 timeZone: timeZone
-            ))
+            ), aboutMessageNote: noteID)
         }
     }
 }

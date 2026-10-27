@@ -19,6 +19,10 @@ public final class SQLiteStateStore: StateStore {
                 id INTEGER PRIMARY KEY CHECK (id = 1),
                 first_run_at REAL NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS notes_folder_notification (
+                id INTEGER PRIMARY KEY CHECK (id = 1),
+                sent_at REAL NOT NULL
+            );
             """)
         // A State Store from before the retry rule has only the columns above.
         let columns = Set(try database.query("SELECT name FROM pragma_table_info('voice_messages')").compactMap { $0[0].text })
@@ -115,5 +119,20 @@ public final class SQLiteStateStore: StateStore {
             throw SQLiteError(description: "The State Store has no first-run time")
         }
         return Date(timeIntervalSince1970: firstRunAt)
+    }
+
+    public func lastNotesFolderNotificationAt() throws -> Date? {
+        let rows = try database.query("SELECT sent_at FROM notes_folder_notification WHERE id = 1")
+        return rows.first?[0].real.map { Date(timeIntervalSince1970: $0) }
+    }
+
+    public func recordNotesFolderNotification(at time: Date) throws {
+        try database.query(
+            """
+            INSERT INTO notes_folder_notification (id, sent_at) VALUES (1, ?)
+            ON CONFLICT(id) DO UPDATE SET sent_at = excluded.sent_at
+            """,
+            [.real(time.timeIntervalSince1970)]
+        )
     }
 }
