@@ -6,7 +6,7 @@ See the spec at `.scratch/imessage-to-notes/spec.md`.
 
 **Blocked by:** 04 (Run log), 05 (Success notification).
 
-**Status:** ready-for-human
+**Status:** done
 
 - [x] Each run makes sure that the Notes Folder exists in the iCloud account before it processes any Voice Message.
 - [x] If the Notes Folder is missing, the run stops, creates no Message Note and creates no folder.
@@ -14,7 +14,7 @@ See the spec at `.scratch/imessage-to-notes/spec.md`.
 - [x] The run sends a notification about the missing Notes Folder at most once every 24 hours.
 - [x] After the Notes Folder exists again, the next run processes the waiting Voice Messages.
 - [x] "Run once" tests with a fake clock cover the stop, the 24-hour notification limit and the recovery.
-- [ ] A manual run makes sure that the real folder check, the notification and its click work. See "Missing Notes Folder" in `docs/smoke-run.md`.
+- [x] A manual run makes sure that the real folder check, the notification and its click work. See "Missing Notes Folder" in `docs/smoke-run.md`.
 
 ## Comments
 
@@ -26,6 +26,6 @@ The notification has no Message Note to open. A notification now has a `click` v
 
 The first run records the first-run time before the folder check. So a first run that stops for a missing folder still fixes the backfill start, and the run after the user creates the folder processes every waiting Voice Message.
 
-The manual run on 2026-10-27 made sure that the real folder check works. The user renamed the Notes Folder, and the notification appeared. The rest of the run behaved as expected. That run had the earlier click, which opened nothing. The click that opens Notes still needs a manual check. See "Missing Notes Folder" in `docs/smoke-run.md`.
+The manual run on 2026-10-27 made sure that the real folder check works. The user renamed the Notes Folder, and the notification appeared. The rest of the run behaved as expected. That run had the earlier click, which opened nothing. A second manual run on 2026-10-27 made sure that a click on the notification brings Notes to the front. Before that run, the user removed the time of the last notification from the State Store, so the 24-hour limit did not block it.
 
 A failure of the folder check itself, for example a missing Automation permission for Notes, ends the run with `run failed` and sends no notification. This ticket does not cover that case.
