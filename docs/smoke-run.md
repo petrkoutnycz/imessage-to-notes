@@ -111,7 +111,7 @@ If the Notes Folder is missing in the iCloud account, a run stops before it proc
 2. In Notes, rename the Notes Folder, for example to `Hlasové zprávy (test)`.
 3. Run `imessage-to-notes probe`. Make sure that it shows the Notes Folder as `MISSING`.
 4. Run the app with the `run` command. Make sure that the log file of today has a `run stopped: notes folder missing` entry.
-5. Make sure that a notification says `Složka pro hlasové zprávy chybí`. Click it. Make sure that the app quits and opens nothing.
+5. Make sure that a notification says `Složka pro hlasové zprávy chybí`. Click it. Make sure that Notes comes to the front. If Notes does not open, look for a `notes open failed` entry in the log.
 6. Run the app with the `run` command again. Make sure that no second notification appears.
 7. Make sure that Notes has no new folder.
 8. Rename the folder back to the Notes Folder name. Run the app with the `run` command. Make sure that the run processes the waiting Voice Messages.

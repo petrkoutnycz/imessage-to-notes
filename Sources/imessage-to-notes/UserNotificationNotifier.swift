@@ -7,6 +7,8 @@ import UserNotifications
 final class UserNotificationNotifier: Notifier {
     /// The `userInfo` key of the Message Note ID in a notification.
     static let noteIDKey = "noteID"
+    /// The `userInfo` key that marks a notification whose click opens the Notes app.
+    static let opensNotesKey = "opensNotes"
     /// How long a run waits for an answer to the permission request. A run that waits forever blocks all later runs.
     static let permissionTimeout: TimeInterval = 60
 
@@ -28,10 +30,15 @@ final class UserNotificationNotifier: Notifier {
         let content = UNMutableNotificationContent()
         content.title = notification.title
         content.body = notification.body
-        if let noteID = notification.noteID {
+        let identifier: String
+        switch notification.click {
+        case .openMessageNote(let noteID):
             content.userInfo = [Self.noteIDKey: noteID]
+            identifier = noteID
+        case .openNotes:
+            content.userInfo = [Self.opensNotesKey: true]
+            identifier = UUID().uuidString
         }
-        let identifier = notification.noteID ?? UUID().uuidString
         try await center.add(UNNotificationRequest(identifier: identifier, content: content, trigger: nil))
     }
 

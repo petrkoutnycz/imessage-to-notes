@@ -30,6 +30,8 @@ public enum LogEvent: Equatable, Sendable {
     case voiceMessage(VoiceMessageLogEntry)
     /// A click on a notification did not open its Message Note.
     case messageNoteOpenFailed(noteID: String, error: String)
+    /// A click on the notification about a missing Notes Folder did not open Notes.
+    case notesOpenFailed(error: String)
 }
 
 /// What happened to one Voice Message in one step.
@@ -100,6 +102,8 @@ extension LogEntry {
             fields += ["notes folder notification failed", "error=\(quoted(error))"]
         case .messageNoteOpenFailed(let noteID, let error):
             fields += ["message note open failed", "note=\(noteID)", "error=\(quoted(error))"]
+        case .notesOpenFailed(let error):
+            fields += ["notes open failed", "error=\(quoted(error))"]
         case .voiceMessage(let entry):
             fields += [
                 "voice-message",

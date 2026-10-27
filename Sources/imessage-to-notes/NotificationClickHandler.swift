@@ -2,7 +2,7 @@ import Foundation
 import ImessageToNotesCore
 import UserNotifications
 
-/// Opens the Message Note of a clicked notification in Notes.
+/// Opens the Message Note of a clicked notification in Notes, or only the Notes app.
 /// macOS hands a click to the app process that runs, or it starts the app with no arguments.
 @MainActor
 final class NotificationClickHandler: NSObject, UNUserNotificationCenterDelegate {
@@ -23,9 +23,12 @@ final class NotificationClickHandler: NSObject, UNUserNotificationCenterDelegate
         didReceive response: UNNotificationResponse
     ) async {
         guard response.actionIdentifier == UNNotificationDefaultActionIdentifier else { return }
-        // A notification about a missing Notes Folder has no Message Note to open.
-        let noteID = response.notification.request.content.userInfo[UserNotificationNotifier.noteIDKey] as? String
-        await open(noteID)
+        let userInfo = response.notification.request.content.userInfo
+        if let noteID = userInfo[UserNotificationNotifier.noteIDKey] as? String {
+            await open(.openMessageNote(noteID: noteID))
+        } else if userInfo[UserNotificationNotifier.opensNotesKey] as? Bool == true {
+            await open(.openNotes)
+        }
     }
 
     /// Shows the banner also when macOS counts this app as the active app.
@@ -36,23 +39,29 @@ final class NotificationClickHandler: NSObject, UNUserNotificationCenterDelegate
         [.banner, .list]
     }
 
-    private func open(_ noteID: String?) async {
+    private func open(_ click: NotificationClick) async {
         clickReceived = true
-        if let noteID {
-            await openMessageNote(noteID)
+        switch click {
+        case .openMessageNote(let noteID):
+            do {
+                try await AppleScriptNotesWriter().openMessageNote(id: noteID)
+            } catch {
+                // The process has no visible output, so the log is the only record of this failure.
+                try? FileLog(directory: Paths.logs).write(LogEntry(
+                    time: Date(),
+                    event: .messageNoteOpenFailed(noteID: noteID, error: String(describing: error))
+                ))
+            }
+        case .openNotes:
+            do {
+                try await AppleScriptNotesWriter().openNotes()
+            } catch {
+                try? FileLog(directory: Paths.logs).write(LogEntry(
+                    time: Date(),
+                    event: .notesOpenFailed(error: String(describing: error))
+                ))
+            }
         }
         onClickHandled?()
-    }
-
-    private func openMessageNote(_ noteID: String) async {
-        do {
-            try await AppleScriptNotesWriter().openMessageNote(id: noteID)
-        } catch {
-            // The process has no visible output, so the log is the only record of this failure.
-            try? FileLog(directory: Paths.logs).write(LogEntry(
-                time: Date(),
-                event: .messageNoteOpenFailed(noteID: noteID, error: String(describing: error))
-            ))
-        }
     }
 }

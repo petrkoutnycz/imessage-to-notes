@@ -147,14 +147,20 @@ public protocol Log {
 public struct UserNotification: Equatable, Sendable {
     public var title: String
     public var body: String
-    /// The Message Note that a click on the notification opens, or nil if a click opens nothing.
-    public var noteID: String?
+    public var click: NotificationClick
 
-    public init(title: String, body: String, noteID: String?) {
+    public init(title: String, body: String, click: NotificationClick) {
         self.title = title
         self.body = body
-        self.noteID = noteID
+        self.click = click
     }
+}
+
+/// What a click on a notification opens.
+public enum NotificationClick: Equatable, Sendable {
+    case openMessageNote(noteID: String)
+    /// The Notes app, for a problem that the user fixes in Notes.
+    case openNotes
 }
 
 public protocol Notifier {

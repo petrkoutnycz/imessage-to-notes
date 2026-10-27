@@ -22,10 +22,10 @@ Each run asks the Notes Writer if the Notes Folder exists in the iCloud account.
 
 The State Store keeps the time of the last notification about the missing folder in the new table `notes_folder_notification`. A run sends the notification only if 24 hours or more passed since that time. A failed notification gets a `notes folder notification failed` log entry and does not count, so the next run tries again. The 24 hours count from the last notification, also if the folder exists for some time between two problems.
 
-The notification has no Message Note, so `UserNotification.noteID` is now optional. A click on this notification ends the app at once and opens nothing.
+The notification has no Message Note to open. A notification now has a `click` value: `openMessageNote(noteID:)` or `openNotes`. A click on the missing-folder notification brings the Notes app to the front, because the user fixes the problem there. A failed open gets a `notes open failed` log entry.
 
 The first run records the first-run time before the folder check. So a first run that stops for a missing folder still fixes the backfill start, and the run after the user creates the folder processes every waiting Voice Message.
 
-No manual test ran for the real AppleScript folder check, the notification with no note ID and its click. The last item needs a human. See "Missing Notes Folder" in `docs/smoke-run.md`.
+The manual run on 2026-10-27 made sure that the real folder check works. The user renamed the Notes Folder, and the notification appeared. The rest of the run behaved as expected. That run had the earlier click, which opened nothing. The click that opens Notes still needs a manual check. See "Missing Notes Folder" in `docs/smoke-run.md`.
 
 A failure of the folder check itself, for example a missing Automation permission for Notes, ends the run with `run failed` and sends no notification. This ticket does not cover that case.

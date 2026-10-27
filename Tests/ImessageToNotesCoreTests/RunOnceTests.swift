@@ -63,7 +63,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     #expect(mac.notifier.notifications == [UserNotification(
         title: "Nová hlasová zpráva od Jana Nováková zpracována",
         body: "2026-10-20 08:30",
-        noteID: "x-coredata://note/1"
+        click: .openMessageNote(noteID: "x-coredata://note/1")
     )])
     let texts = mac.notifier.notifications.flatMap { [$0.title, $0.body] }.joined(separator: "\n")
     for privateText in [transcript, summary.text] + summary.actionItems {
@@ -469,7 +469,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     #expect(mac.notifier.notifications == [UserNotification(
         title: "Shrnutí hlasové zprávy od Jana Nováková selhalo",
         body: "2026-10-20 08:30",
-        noteID: "x-coredata://note/1"
+        click: .openMessageNote(noteID: "x-coredata://note/1")
     )])
     #expect(try mac.state.record(for: "GUID-1") == VoiceMessageRecord(
         guid: "GUID-1",
@@ -498,7 +498,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     #expect(mac.notifier.notifications == [UserNotification(
         title: "Přepis hlasové zprávy od Jana Nováková selhal",
         body: "2026-10-20 08:30",
-        noteID: "x-coredata://note/1"
+        click: .openMessageNote(noteID: "x-coredata://note/1")
     )])
     #expect(try mac.state.record(for: "GUID-1")?.status == .fallback)
 }
@@ -677,7 +677,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     ])
 }
 
-@Test func missingNotesFolderSendsNotificationAtMostOnceEveryTwentyFourHours() async throws {
+@Test func missingNotesFolderSendsNotificationThatOpensNotesAtMostOnceEveryTwentyFourHours() async throws {
     var mac = FakeMac()
     mac.notesWriter.notesFolders = []
 
@@ -689,7 +689,7 @@ private let transcript = "Ahoj, nezapomeň zítra v deset vyzvednout balík na p
     let notification = UserNotification(
         title: "Složka pro hlasové zprávy chybí",
         body: "V Poznámkách v účtu iCloud chybí složka „Hlasové zprávy“. Vytvořte ji.",
-        noteID: nil
+        click: .openNotes
     )
     #expect(mac.notifier.notifications == [notification, notification, notification])
 }

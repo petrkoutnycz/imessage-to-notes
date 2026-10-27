@@ -41,6 +41,11 @@ final class AppleScriptNotesWriter: NotesWriter {
             """
         try await MainActor.run { _ = try AppleScript.run(source) }
     }
+
+    /// Shows the Notes app in front of other apps.
+    func openNotes() async throws {
+        try await MainActor.run { _ = try AppleScript.run("tell application \"Notes\" to activate") }
+    }
 }
 
 enum AppleScript {

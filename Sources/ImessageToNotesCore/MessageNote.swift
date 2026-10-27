@@ -12,7 +12,7 @@ enum MessageNote {
         UserNotification(
             title: "Nová hlasová zpráva od \(trackedContactName) zpracována",
             body: localTime(sentAt, timeZone: timeZone),
-            noteID: noteID
+            click: .openMessageNote(noteID: noteID)
         )
     }
 
@@ -29,7 +29,7 @@ enum MessageNote {
         case .transcriptionFailed: "Přepis hlasové zprávy od \(trackedContactName) selhal"
         case .audioFileMissing: "Zvukový soubor hlasové zprávy od \(trackedContactName) chybí"
         }
-        return UserNotification(title: title, body: localTime(sentAt, timeZone: timeZone), noteID: noteID)
+        return UserNotification(title: title, body: localTime(sentAt, timeZone: timeZone), click: .openMessageNote(noteID: noteID))
     }
 
     /// `YYYY-MM-DD HH:MM` in local time.
@@ -71,12 +71,12 @@ enum MessageNote {
 }
 
 extension UserNotification {
-    /// The notification about a missing Notes Folder. A click opens nothing, because no Message Note exists.
+    /// The notification about a missing Notes Folder. A click opens Notes, where the user creates the folder.
     static func notesFolderMissing(_ notesFolder: String) -> UserNotification {
         UserNotification(
             title: "Složka pro hlasové zprávy chybí",
             body: "V Poznámkách v účtu iCloud chybí složka „\(notesFolder)“. Vytvořte ji.",
-            noteID: nil
+            click: .openNotes
         )
     }
 }
