@@ -8,7 +8,7 @@ One person regularly sends me Voice Messages in Czech over iMessage. To know wha
 
 ## Solution
 
-A background tool on my Mac runs every 5 minutes. It finds new Voice Messages that a Tracked Contact sends me in a Direct Chat. It transcribes each one locally and sends only the Transcript text to Claude to get a Czech Summary and any Action Items. It then creates one Message Note in my Notes Folder in iCloud, so the Message Note also appears on my iPhone. On the first run, it also processes Voice Messages from the last 7 days. If a step fails, it retries for 12 hours and then creates a fallback Message Note, so no Voice Message disappears silently. I get a macOS notification for each Message Note and for each problem. A log file records every run.
+A background tool on my Mac runs every 5 minutes. It finds new Voice Messages that a Tracked Contact sends me in a Direct Chat. It transcribes each one locally. It sends only the Transcript text and the Tracked Contact name to Claude to get a Czech Summary and any Action Items. It then creates one Message Note in my Notes Folder in iCloud, so the Message Note also appears on my iPhone. On the first run, it also processes Voice Messages from the last 7 days. If a step fails, it retries for 12 hours and then creates a fallback Message Note, so no Voice Message disappears silently. I get a macOS notification for each Message Note and for each problem. A log file records every run.
 
 ## User Stories
 
@@ -34,7 +34,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 20. As the user, I want at most one Message Note for each Voice Message, ever, so that I never get duplicates.
 21. As the user, I want my edits and deletions of Message Notes to stay, so that the tool never overwrites them.
 22. As the user, I want the audio to stay on my Mac, so that private recordings never go to a cloud service.
-23. As the user, I want only the Transcript text to go to the Claude API, so that the minimum private data leaves my Mac.
+23. As the user, I want only the Transcript and the Tracked Contact name sent to Claude, so that little private data leaves my Mac.
 24. As the user, I want my Anthropic API key read from the macOS Keychain, so that the key is not in a plain file.
 25. As the user, I want failed steps retried for 12 hours, so that a short outage does not lose a Voice Message.
 26. As the user, I want a fallback Message Note with the Transcript after 12 hours of failed Summaries, so that I keep the content.
@@ -55,6 +55,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 41. As the user, I want the tool to start automatically at login, so that I do not have to remember to start it.
 42. As the user, I want only one run at a time, so that overlapping runs do not create duplicates.
 43. As the user, I want a setting to include the Transcript in the Message Note, so that I can read the full text when I want it.
+44. As the user, I want Message Notes to call the Tracked Contact by their first name, so that the notes feel personal.
 
 ## Implementation Decisions
 
@@ -72,7 +73,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 - Difference from the expected markers: many messages have no row in `chat_message_join`, so they have no chat and no chat style. On this Mac, about 3,500 messages have no chat link, and 3 of the 5 newest Voice Messages from the Tracked Contact have none. A Messages Reader that requires chat style 45 misses these Voice Messages. `message.cache_roomnames` is empty for every message, so it cannot mark group messages. Decision in ticket 02, accepted by the user: a Voice Message with no chat link counts as a Direct Chat message when its Handle belongs to a Tracked Contact. Only a link to a chat with a style other than 45 excludes a Voice Message. The risk is that a group chat Voice Message with no chat link produces a Message Note.
 - Backfill start: the State Store records the time of the first run. The backfill start is that time minus the backfill window, and it does not move from run to run. Every run considers all Voice Messages after the backfill start that are not done.
 - Transcriber: WhisperKit with the Whisper large-v3 model, language fixed to Czech with no auto-detection. Input is the audio file path. Output is the Transcript text. The first ticket must make sure that the Voice Message audio format decodes on this Mac.
-- Summarizer: the Claude Messages API with model `claude-sonnet-5-5` (see ADR 0001). The API key comes from the macOS Keychain. Input is the Transcript. Output is a Summary of 2 to 4 sentences of Czech prose plus a list of Action Items, which can be empty. The request asks for a structured response, so the code never parses free text.
+- Summarizer: the Claude Messages API with model `claude-sonnet-5-5` (see ADR 0001 and ADR 0003). The API key comes from the macOS Keychain. Input is the Transcript and the whole Tracked Contact name. Claude finds the first name in that name. If the name has no clear first name, for example "Mamka", Claude uses the name as it is. The Summary and the Action Items call the speaker by that first name, in the correct Czech case and gender. They do not mention the listener. Output is a Summary of 2 to 4 sentences of Czech prose plus a list of Action Items, which can be empty. The request asks for a structured response, so the code never parses free text.
 - Notes Writer: it creates a note through AppleScript in the Notes Folder of the iCloud account, with an HTML body, and returns the note ID. It also opens a note by ID, for the notification click. It needs the macOS Automation permission for Notes.
 - Message Note title: `<Tracked Contact name> – <YYYY-MM-DD HH:MM>`, in local time, from the sent date of the Voice Message.
 - Message Note body in the normal case: the Summary. If Action Items exist, an "Úkoly" (Action Items) list follows. If `includeTranscript` is true, a bold "Přepis" (Transcript) heading and the Transcript come last, as one paragraph. If it is false, there is no Transcript.
@@ -89,7 +90,7 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 ## Testing Decisions
 
 - A good test drives the tool from the outside and asserts on what the user sees: which Message Notes exist, with what title and body, what the State Store records, what the log says and which notifications fire. It never asserts on internal calls or private types.
-- Main seam: the run once operation, called with fake adapters and a fake clock. These tests cover Tracked Contacts only, Direct Chats only, the backfill window and at most one Message Note per Voice Message. They also cover the 12-hour retry, both fallback bodies, the missing audio file and the missing Notes Folder. They also cover the normal body with `includeTranscript` off and on. Last, they cover the notification limits, the run lock and the rule that the log holds no Transcript or Summary text.
+- Main seam: the run once operation, called with fake adapters and a fake clock. These tests cover Tracked Contacts only, Direct Chats only, the backfill window and at most one Message Note per Voice Message. They also cover the 12-hour retry, both fallback bodies, the missing audio file and the missing Notes Folder. They also cover the normal body with `includeTranscript` off and on, and that the Summarizer gets the name of the correct Tracked Contact. Last, they cover the notification limits, the run lock and the rule that the log holds no Transcript or Summary text.
 - Second seam: the Messages Reader, tested against small SQLite fixture files that copy the parts of the Messages database schema that the reader uses. These tests cover audio versus other messages, from-me messages, one-to-one versus group chats, Handle matching across phone numbers and emails, and Apple epoch date filtering.
 - The real WhisperKit, Claude API, Notes, notification and Keychain adapters get no automated tests. A manual smoke run on the Mac, with one real Voice Message, makes sure that they work.
 - The repo has no prior art. Tests use the Swift testing framework that comes with Xcode.
@@ -118,4 +119,4 @@ A background tool on my Mac runs every 5 minutes. It finds new Voice Messages th
 - iPhone audio message expiry stays at its current setting, because I never play these Voice Messages myself. If I play one, the audio can expire before the tool reads it. In that case the missing audio file rule applies.
 - Messages in iCloud must be on for this Mac, and the Mac must be on and logged in for runs to happen.
 - The first ticket is a thin end-to-end path, from one real Voice Message to one Message Note. It must make sure that the database markers, the audio decoding and the Notes iCloud account name match what this spec expects.
-- Vocabulary follows `GLOSSARY.md`. Decisions follow ADR 0001 and ADR 0002.
+- Vocabulary follows `GLOSSARY.md`. Decisions follow ADR 0001, ADR 0002 and ADR 0003.

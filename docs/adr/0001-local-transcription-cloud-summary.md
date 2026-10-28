@@ -1,3 +1,7 @@
+---
+status: accepted, amended by ADR 0003
+---
+
 # Local transcription, cloud summary
 
 Voice Messages are private messages from another person. The audio never leaves the Mac. Whisper large-v3 transcribes it locally, and only the Transcript text goes to the Claude API to produce the Summary and Action Items. Local Whisper handles Czech well on Apple Silicon, so a cloud speech service adds no quality. But local language models write noticeably weaker Czech summaries than Claude, so the summary step stays in the cloud.
